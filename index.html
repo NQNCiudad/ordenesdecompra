@@ -10,7 +10,7 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script type="text/babel">
-        const { useState } = React;
+        const { useState, useEffect } = React;
 
         const productosData = `QUILMES|28861|GASEOSA NARANJA LATA|MIRINDA|24|354|CM3
 QUILMES|28873|GASEOSA POMELO PET|P. DE LOS TOROS|8|2250|CM3
@@ -998,10 +998,49 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
         const sucursales = ['006', '068', '162', '225', '226', '229', '232', '233', '235', '236', '237', '239', '240', '248'];
 
         function App() {
-            const [proveedor, setProveedor] = useState('');
-            const [sucursal, setSucursal] = useState('');
-            const [productosSeleccionados, setProductosSeleccionados] = useState([]);
+            // Cargar datos guardados al iniciar
+            const [proveedor, setProveedor] = useState(() => {
+                return localStorage.getItem('proveedor') || '';
+            });
+            
+            const [sucursal, setSucursal] = useState(() => {
+                return localStorage.getItem('sucursal') || '';
+            });
+            
+            const [productosSeleccionados, setProductosSeleccionados] = useState(() => {
+                const saved = localStorage.getItem('productosSeleccionados');
+                return saved ? JSON.parse(saved) : [];
+            });
+            
             const [busqueda, setBusqueda] = useState('');
+            const [mensajeGuardado, setMensajeGuardado] = useState('');
+
+            // Guardar en localStorage cuando cambien los datos
+            useEffect(() => {
+                localStorage.setItem('proveedor', proveedor);
+                if (proveedor) {
+                    mostrarMensajeGuardado();
+                }
+            }, [proveedor]);
+
+            useEffect(() => {
+                localStorage.setItem('sucursal', sucursal);
+                if (sucursal) {
+                    mostrarMensajeGuardado();
+                }
+            }, [sucursal]);
+
+            useEffect(() => {
+                localStorage.setItem('productosSeleccionados', JSON.stringify(productosSeleccionados));
+                if (productosSeleccionados.length > 0) {
+                    mostrarMensajeGuardado();
+                }
+            }, [productosSeleccionados]);
+
+            const mostrarMensajeGuardado = () => {
+                setMensajeGuardado('✅ Datos guardados');
+                setTimeout(() => setMensajeGuardado(''), 2000);
+            };
 
             const productosFiltrados = productos.filter(p => 
                 p.proveedor === proveedor && 
@@ -1071,16 +1110,35 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
             };
 
             const limpiarOrden = () => {
-                if (confirm('¿Está seguro de limpiar toda la orden?')) {
+                if (confirm('¿Está seguro de limpiar toda la orden? Esto eliminará todos los datos guardados.')) {
                     setProductosSeleccionados([]);
+                    setProveedor('');
+                    setSucursal('');
+                    localStorage.removeItem('productosSeleccionados');
+                    localStorage.removeItem('proveedor');
+                    localStorage.removeItem('sucursal');
+                    setMensajeGuardado('🗑️ Datos eliminados');
+                    setTimeout(() => setMensajeGuardado(''), 2000);
                 }
             };
 
             return (
                 <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 p-4 md:p-8">
                     <div className="max-w-7xl mx-auto">
+                        {/* Mensaje de guardado */}
+                        {mensajeGuardado && (
+                            <div className="fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg z-50 animate-pulse">
+                                {mensajeGuardado}
+                            </div>
+                        )}
+
                         <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-                            <h1 className="text-3xl font-bold text-indigo-600 mb-6">Control de Órdenes de Compra</h1>
+                            <div className="flex justify-between items-center mb-4">
+                                <h1 className="text-3xl font-bold text-indigo-600">Control de Órdenes de Compra</h1>
+                                <div className="text-sm text-gray-500">
+                                    <i className="fas fa-save"></i> Guardado automático
+                                </div>
+                            </div>
                             
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                                 <div>
@@ -1132,6 +1190,11 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                                                     </button>
                                                 </div>
                                             ))}
+                                            {productosFiltrados.length === 0 && (
+                                                <div className="p-4 text-center text-gray-500">
+                                                    No se encontraron productos
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                 </div>
@@ -1141,7 +1204,9 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                         {productosSeleccionados.length > 0 && (
                             <div className="bg-white rounded-lg shadow-lg p-6">
                                 <div className="flex justify-between items-center mb-4">
-                                    <h2 className="text-2xl font-bold text-gray-800">Orden Actual</h2>
+                                    <h2 className="text-2xl font-bold text-gray-800">
+                                        Orden Actual ({productosSeleccionados.length} productos)
+                                    </h2>
                                     <div className="space-x-2">
                                         <button 
                                             onClick={exportarExcel}
@@ -1246,6 +1311,14 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                                 </div>
                             </div>
                         )}
+
+                        {productosSeleccionados.length === 0 && proveedor && sucursal && (
+                            <div className="bg-white rounded-lg shadow-lg p-12 text-center">
+                                <i className="fas fa-box-open text-6xl text-gray-300 mb-4"></i>
+                                <h3 className="text-xl text-gray-600 mb-2">No hay productos en la orden</h3>
+                                <p className="text-gray-500">Busca y agrega productos para comenzar</p>
+                            </div>
+                        )}
                     </div>
 
                     <footer className="mt-12 pt-8 border-t border-gray-200 text-center text-gray-600">
@@ -1254,7 +1327,7 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                                 <i className="fas fa-code"></i> Desarrollado por <strong>Jonathan Cheves</strong>
                             </div>
                             <div>
-                                <i className="fas fa-building"></i> Sucursales de Neuquén Ciudad | <strong>SAIEP S.A.</strong>
+                                <i className="fas fa-building"></i> Sucursales de Neuquén Ciudad | <strong>S.A.I.E.P.</strong>
                             </div>
                             <div className="text-sm text-gray-500">
                                 <i className="fas fa-copyright"></i> 2025 SAIEP S.A. - Todos los derechos reservados
