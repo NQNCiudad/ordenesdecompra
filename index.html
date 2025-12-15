@@ -981,7 +981,7 @@ DANONE-MASTELLONE|3045080|FORMULA LACTEA POLVO PROFUTURA ET2|NUTRILON|10|1200|GR
 DANONE-MASTELLONE|3179849|FORMULA LACTEA EN POLVO ETAPA 4|VITAL|8|1000|GR
 DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
 
-        function parseProductos() {
+                function parseProductos() {
             const lines = productosData.trim().split('\n');
             return lines.map(line => {
                 const parts = line.split('|');
@@ -1000,14 +1000,6 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
         const productos = parseProductos();
         const proveedores = ['QUILMES', 'CCU', 'COCA COLA', 'DANONE-MASTELLONE'];
         const sucursales = ['006', '068', '162', '225', '226', '229', '232', '233', '235', '236', '237', '239', '240', '248'];
-
-        // Mapeo de proveedores según aparecen en el PDF
-        const proveedorMapping = {
-            'DANONE ARGENTINA S.A.': 'DANONE-MASTELLONE',
-            'QUILMES': 'QUILMES',
-            'CCU': 'CCU',
-            'COCA COLA': 'COCA COLA'
-        };
 
         function App() {
             const [proveedor, setProveedor] = useState(() => {
@@ -1074,21 +1066,11 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
             const parsearPDF = (texto) => {
                 const lineas = texto.split('\n');
                 const productosEncontrados = [];
+                const productosYaAgregados = new Set();
                 let proveedorDetectado = '';
                 let sucursalDetectada = '';
 
-                // Detectar proveedor
-                for (const linea of lineas) {
-                    for (const [nombrePDF, nombreSistema] of Object.entries(proveedorMapping)) {
-                        if (linea.includes(nombrePDF)) {
-                            proveedorDetectado = nombreSistema;
-                            break;
-                        }
-                    }
-                    if (proveedorDetectado) break;
-                }
-
-                // Detectar sucursal (buscar código de 3 dígitos entre corchetes)
+                // Detectar sucursal
                 for (const linea of lineas) {
                     const matchSucursal = linea.match(/\[(\d{3})\]/);
                     if (matchSucursal && sucursales.includes(matchSucursal[1])) {
@@ -1097,35 +1079,120 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                     }
                 }
 
-                // Buscar productos (líneas que contienen códigos de artículo)
+                console.log('============================================');
+                console.log('📄 ANÁLISIS DEL PDF');
+                console.log('============================================');
+                console.log('Sucursal detectada:', sucursalDetectada);
+                console.log('Total líneas:', lineas.length);
+                console.log('Modo: Búsqueda por CÓDIGO (ignora proveedor del PDF)');
+                console.log('============================================');
+
+                let productosDetectados = 0;
+                const proveedoresEncontrados = new Set();
+                
                 for (let i = 0; i < lineas.length; i++) {
                     const linea = lineas[i];
                     
-                    // Buscar patrón: 030 [CODIGO] o similar
-                    const matchCodigo = linea.match(/030\s+(\d+)/);
-                    if (matchCodigo) {
-                        const codigo = matchCodigo[1];
+                    // Buscar códigos con múltiples patrones
+                    let codigo = null;
+                    
+                    // Patrón 1: * 030 CODIGO (con asterisco)
+                    let match = linea.match(/[\*]\s*0?3[0o]\s+(\d{6,})/i);
+                    if (match) {
+                        codigo = match[1];
+                    }
+                    
+                    // Patrón 2: 030 CODIGO (sin asterisco, al inicio)
+                    if (!codigo) {
+                        match = linea.match(/^\s*0?3[0o]\s+(\d{6,})/i);
+                        if (match) {
+                            codigo = match[1];
+                        }
+                    }
+                    
+                    // Patrón 3: Buscar secuencia 030 seguida de número de 6+ dígitos
+                    if (!codigo) {
+                        match = linea.match(/\b0?3[0o]\s+(\d{6,})\b/i);
+                        if (match) {
+                            codigo = match[1];
+                        }
+                    }
+                    
+                    if (codigo) {
+                        productosDetectados++;
                         
-                        // Buscar cantidad (último número decimal antes de "Kg" o al final de la línea)
-                        const matchCantidad = linea.match(/(\d+\.?\d*)\s+\d+\.\d+\s+\d+\.\d+\s+\d+\.\d+\s+\d+\.\d+/);
-                        let cantidad = 0;
+                        console.log(`Línea ${i + 1}: Código detectado [${codigo}]`);
+                        console.log(`   Contenido: ${linea.substring(0, 100)}...`);
                         
-                        if (matchCantidad) {
-                            cantidad = parseFloat(matchCantidad[1]);
+                        if (productosYaAgregados.has(codigo)) {
+                            console.log(`⚠️ Duplicado ignorado: ${codigo}`);
+                            continue;
+                        }
+                        
+                        let bultos = 0;
+                        const partes = linea.trim().split(/\s+/);
+                        
+                        // Buscar U/M y retroceder 2 posiciones para Bto
+                        for (let j = 0; j < partes.length; j++) {
+                            if (partes[j].match(/^(GR|CM3|KGR?|LTS?|CU)$/i)) {
+                                if (j >= 2) {
+                                    const valorBto = partes[j - 2];
+                                    const num = parseInt(valorBto);
+                                    
+                                    if (!isNaN(num) && num > 0 && num < 10000) {
+                                        bultos = num;
+                                        console.log(`   🔍 Bto detectado: ${bultos}`);
+                                        break;
+                                    }
+                                }
+                            }
                         }
 
-                        // Buscar el producto en nuestra base de datos
-                        const producto = productos.find(p => p.codigo === codigo && p.proveedor === proveedorDetectado);
+                        // Buscar producto SOLO por código
+                        const producto = productos.find(p => p.codigo === codigo);
                         
                         if (producto) {
+                            productosYaAgregados.add(codigo);
+                            proveedoresEncontrados.add(producto.proveedor);
+                            
                             productosEncontrados.push({
                                 ...producto,
-                                pedido: Math.floor(cantidad),
+                                pedido: bultos,
                                 recibido: 0
                             });
+                            console.log(`   ✅ Encontrado: ${producto.descripcion} (${producto.proveedor})`);
+                        } else {
+                            console.log(`   ❌ Código ${codigo} NO está en la base de datos`);
+                            console.log(`   💡 Verifica que el código ${codigo} esté en productosData`);
                         }
                     }
                 }
+
+                // Determinar el proveedor basado en los productos encontrados
+                // Si todos los productos son del mismo proveedor, usar ese
+                const proveedoresArray = Array.from(proveedoresEncontrados);
+                if (proveedoresArray.length === 1) {
+                    proveedorDetectado = proveedoresArray[0];
+                } else if (proveedoresArray.length > 1) {
+                    // Si hay múltiples proveedores, usar el más común
+                    const conteo = {};
+                    productosEncontrados.forEach(p => {
+                        conteo[p.proveedor] = (conteo[p.proveedor] || 0) + 1;
+                    });
+                    proveedorDetectado = Object.keys(conteo).reduce((a, b) => 
+                        conteo[a] > conteo[b] ? a : b
+                    );
+                }
+
+                console.log('============================================');
+                console.log('📊 RESUMEN');
+                console.log('============================================');
+                console.log('Códigos detectados:', productosDetectados);
+                console.log('Productos encontrados:', productosEncontrados.length);
+                console.log('No encontrados:', productosDetectados - productosEncontrados.length);
+                console.log('Proveedores detectados:', Array.from(proveedoresEncontrados).join(', '));
+                console.log('Proveedor principal:', proveedorDetectado);
+                console.log('============================================');
 
                 return {
                     proveedor: proveedorDetectado,
@@ -1148,12 +1215,6 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                     const texto = await extractTextFromPDF(file);
                     const resultado = parsearPDF(texto);
 
-                    if (!resultado.proveedor) {
-                        setErrorPDF('No se pudo detectar el proveedor en el PDF');
-                        setCargandoPDF(false);
-                        return;
-                    }
-
                     if (!resultado.sucursal) {
                         setErrorPDF('No se pudo detectar la sucursal en el PDF');
                         setCargandoPDF(false);
@@ -1161,14 +1222,14 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                     }
 
                     if (resultado.productos.length === 0) {
-                        setErrorPDF('No se encontraron productos en el PDF');
+                        setErrorPDF('No se encontraron productos en el PDF. Verifica que los códigos estén en tu base de datos.');
                         setCargandoPDF(false);
                         return;
                     }
 
                     // Mostrar modal de confirmación
                     setProductosPDF(resultado.productos);
-                    setProveedor(resultado.proveedor);
+                    setProveedor(resultado.proveedor || 'MIXTO');
                     setSucursal(resultado.sucursal);
                     setMostrarModalPDF(true);
 
