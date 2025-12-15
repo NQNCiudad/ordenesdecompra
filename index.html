@@ -1085,47 +1085,39 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                 console.log('Sucursal detectada:', sucursalDetectada);
                 console.log('Total líneas:', lineas.length);
                 console.log('Modo: Búsqueda por CÓDIGO (ignora proveedor del PDF)');
+                console.log('');
+                console.log('🔍 MUESTRA DE LÍNEAS DEL PDF:');
+                // Mostrar primeras 5 líneas que contienen "030" para debug
+                let muestrasImpresas = 0;
+                for (let i = 0; i < lineas.length && muestrasImpresas < 5; i++) {
+                    if (lineas[i].includes('030')) {
+                        console.log(`Línea ${i + 1}: "${lineas[i].substring(0, 120)}..."`);
+                        muestrasImpresas++;
+                    }
+                }
                 console.log('============================================');
+                console.log('');
 
                 let productosDetectados = 0;
                 const proveedoresEncontrados = new Set();
+                const codigosNoEncontrados = [];
                 
                 for (let i = 0; i < lineas.length; i++) {
                     const linea = lineas[i];
                     
-                    // Buscar códigos con múltiples patrones
+                    // Buscar códigos - PATRONES SIMPLIFICADOS Y MÁS AMPLIOS
                     let codigo = null;
                     
-                    // Patrón 1: * 030 CODIGO (con asterisco)
-                    let match = linea.match(/[\*]\s*0?3[0o]\s+(\d{6,})/i);
+                    // Patrón principal: "030" seguido de espacio y 6-8 dígitos
+                    let match = linea.match(/030\s+(\d{6,8})/);
                     if (match) {
                         codigo = match[1];
-                    }
-                    
-                    // Patrón 2: 030 CODIGO (sin asterisco, al inicio)
-                    if (!codigo) {
-                        match = linea.match(/^\s*0?3[0o]\s+(\d{6,})/i);
-                        if (match) {
-                            codigo = match[1];
-                        }
-                    }
-                    
-                    // Patrón 3: Buscar secuencia 030 seguida de número de 6+ dígitos
-                    if (!codigo) {
-                        match = linea.match(/\b0?3[0o]\s+(\d{6,})\b/i);
-                        if (match) {
-                            codigo = match[1];
-                        }
                     }
                     
                     if (codigo) {
                         productosDetectados++;
                         
-                        console.log(`Línea ${i + 1}: Código detectado [${codigo}]`);
-                        console.log(`   Contenido: ${linea.substring(0, 100)}...`);
-                        
                         if (productosYaAgregados.has(codigo)) {
-                            console.log(`⚠️ Duplicado ignorado: ${codigo}`);
                             continue;
                         }
                         
@@ -1141,7 +1133,6 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                                     
                                     if (!isNaN(num) && num > 0 && num < 10000) {
                                         bultos = num;
-                                        console.log(`   🔍 Bto detectado: ${bultos}`);
                                         break;
                                     }
                                 }
@@ -1160,13 +1151,26 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                                 pedido: bultos,
                                 recibido: 0
                             });
-                            console.log(`   ✅ Encontrado: ${producto.descripcion} (${producto.proveedor})`);
+                            console.log(`✅ ${i + 1}: [${codigo}] Bto:${bultos} → ${producto.descripcion.substring(0,35)}...`);
                         } else {
-                            console.log(`   ❌ Código ${codigo} NO está en la base de datos`);
-                            console.log(`   💡 Verifica que el código ${codigo} esté en productosData`);
+                            codigosNoEncontrados.push(codigo);
+                            console.log(`❌ ${i + 1}: [${codigo}] Bto:${bultos} → NO EN BD`);
                         }
                     }
                 }
+
+                console.log('');
+                console.log('============================================');
+                console.log('📊 RESUMEN');
+                console.log('============================================');
+                console.log('Códigos detectados:', productosDetectados);
+                console.log('✅ Encontrados en BD:', productosEncontrados.length);
+                console.log('❌ NO encontrados:', codigosNoEncontrados.length);
+                if (codigosNoEncontrados.length > 0 && codigosNoEncontrados.length < 20) {
+                    console.log('Códigos faltantes:', codigosNoEncontrados.join(', '));
+                }
+                console.log('Proveedores:', Array.from(proveedoresEncontrados).join(', '));
+                console.log('============================================');
 
                 // Determinar el proveedor basado en los productos encontrados
                 // Si todos los productos son del mismo proveedor, usar ese
@@ -1624,7 +1628,7 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                         )}
                     </div>
 
-                    <footer className="mt-12 pt-8 border-t border-gray-200 text-center text-gray-600">
+                    <footer className="mt-10 pt-6 border-t border-gray-200 text-center text-gray-600">
                         <div className="space-y-2">
                             <div>
                                 <i className="fas fa-code"></i> Desarrollado por <strong>Jonathan Cheves</strong>
