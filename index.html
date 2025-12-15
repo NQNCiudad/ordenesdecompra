@@ -8,9 +8,13 @@
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script type="text/babel">
         const { useState, useEffect } = React;
+
+        // Configurar PDF.js
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
         const productosData = `QUILMES|28861|GASEOSA NARANJA LATA|MIRINDA|24|354|CM3
 QUILMES|28873|GASEOSA POMELO PET|P. DE LOS TOROS|8|2250|CM3
@@ -997,8 +1001,15 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
         const proveedores = ['QUILMES', 'CCU', 'COCA COLA', 'DANONE-MASTELLONE'];
         const sucursales = ['006', '068', '162', '225', '226', '229', '232', '233', '235', '236', '237', '239', '240', '248'];
 
+        // Mapeo de proveedores según aparecen en el PDF
+        const proveedorMapping = {
+            'DANONE ARGENTINA S.A.': 'DANONE-MASTELLONE',
+            'QUILMES': 'QUILMES',
+            'CCU': 'CCU',
+            'COCA COLA': 'COCA COLA'
+        };
+
         function App() {
-            // Cargar datos guardados al iniciar
             const [proveedor, setProveedor] = useState(() => {
                 return localStorage.getItem('proveedor') || '';
             });
@@ -1014,8 +1025,11 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
             
             const [busqueda, setBusqueda] = useState('');
             const [mensajeGuardado, setMensajeGuardado] = useState('');
+            const [cargandoPDF, setCargandoPDF] = useState(false);
+            const [errorPDF, setErrorPDF] = useState('');
+            const [mostrarModalPDF, setMostrarModalPDF] = useState(false);
+            const [productosPDF, setProductosPDF] = useState([]);
 
-            // Guardar en localStorage cuando cambien los datos
             useEffect(() => {
                 localStorage.setItem('proveedor', proveedor);
                 if (proveedor) {
@@ -1040,6 +1054,144 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
             const mostrarMensajeGuardado = () => {
                 setMensajeGuardado('✅ Datos guardados');
                 setTimeout(() => setMensajeGuardado(''), 2000);
+            };
+
+            const extractTextFromPDF = async (file) => {
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                let fullText = '';
+                
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const textContent = await page.getTextContent();
+                    const pageText = textContent.items.map(item => item.str).join(' ');
+                    fullText += pageText + '\n';
+                }
+                
+                return fullText;
+            };
+
+            const parsearPDF = (texto) => {
+                const lineas = texto.split('\n');
+                const productosEncontrados = [];
+                let proveedorDetectado = '';
+                let sucursalDetectada = '';
+
+                // Detectar proveedor
+                for (const linea of lineas) {
+                    for (const [nombrePDF, nombreSistema] of Object.entries(proveedorMapping)) {
+                        if (linea.includes(nombrePDF)) {
+                            proveedorDetectado = nombreSistema;
+                            break;
+                        }
+                    }
+                    if (proveedorDetectado) break;
+                }
+
+                // Detectar sucursal (buscar código de 3 dígitos entre corchetes)
+                for (const linea of lineas) {
+                    const matchSucursal = linea.match(/\[(\d{3})\]/);
+                    if (matchSucursal && sucursales.includes(matchSucursal[1])) {
+                        sucursalDetectada = matchSucursal[1];
+                        break;
+                    }
+                }
+
+                // Buscar productos (líneas que contienen códigos de artículo)
+                for (let i = 0; i < lineas.length; i++) {
+                    const linea = lineas[i];
+                    
+                    // Buscar patrón: 030 [CODIGO] o similar
+                    const matchCodigo = linea.match(/030\s+(\d+)/);
+                    if (matchCodigo) {
+                        const codigo = matchCodigo[1];
+                        
+                        // Buscar cantidad (último número decimal antes de "Kg" o al final de la línea)
+                        const matchCantidad = linea.match(/(\d+\.?\d*)\s+\d+\.\d+\s+\d+\.\d+\s+\d+\.\d+\s+\d+\.\d+/);
+                        let cantidad = 0;
+                        
+                        if (matchCantidad) {
+                            cantidad = parseFloat(matchCantidad[1]);
+                        }
+
+                        // Buscar el producto en nuestra base de datos
+                        const producto = productos.find(p => p.codigo === codigo && p.proveedor === proveedorDetectado);
+                        
+                        if (producto) {
+                            productosEncontrados.push({
+                                ...producto,
+                                pedido: Math.floor(cantidad),
+                                recibido: 0
+                            });
+                        }
+                    }
+                }
+
+                return {
+                    proveedor: proveedorDetectado,
+                    sucursal: sucursalDetectada,
+                    productos: productosEncontrados
+                };
+            };
+
+            const handleCargarPDF = async (event) => {
+                const file = event.target.files[0];
+                if (!file || file.type !== 'application/pdf') {
+                    setErrorPDF('Por favor seleccione un archivo PDF válido');
+                    return;
+                }
+
+                setCargandoPDF(true);
+                setErrorPDF('');
+
+                try {
+                    const texto = await extractTextFromPDF(file);
+                    const resultado = parsearPDF(texto);
+
+                    if (!resultado.proveedor) {
+                        setErrorPDF('No se pudo detectar el proveedor en el PDF');
+                        setCargandoPDF(false);
+                        return;
+                    }
+
+                    if (!resultado.sucursal) {
+                        setErrorPDF('No se pudo detectar la sucursal en el PDF');
+                        setCargandoPDF(false);
+                        return;
+                    }
+
+                    if (resultado.productos.length === 0) {
+                        setErrorPDF('No se encontraron productos en el PDF');
+                        setCargandoPDF(false);
+                        return;
+                    }
+
+                    // Mostrar modal de confirmación
+                    setProductosPDF(resultado.productos);
+                    setProveedor(resultado.proveedor);
+                    setSucursal(resultado.sucursal);
+                    setMostrarModalPDF(true);
+
+                } catch (error) {
+                    console.error('Error al procesar PDF:', error);
+                    setErrorPDF('Error al procesar el PDF: ' + error.message);
+                } finally {
+                    setCargandoPDF(false);
+                    event.target.value = ''; // Reset input
+                }
+            };
+
+            const confirmarCargaPDF = () => {
+                setProductosSeleccionados(productosPDF);
+                setMostrarModalPDF(false);
+                setProductosPDF([]);
+                setMensajeGuardado('✅ Orden cargada desde PDF');
+                setTimeout(() => setMensajeGuardado(''), 2000);
+            };
+
+            const cancelarCargaPDF = () => {
+                setMostrarModalPDF(false);
+                setProductosPDF([]);
             };
 
             const productosFiltrados = productos.filter(p => 
@@ -1132,12 +1284,102 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                             </div>
                         )}
 
+                        {/* Modal de confirmación PDF */}
+                        {mostrarModalPDF && (
+                            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                                <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+                                    <div className="p-6 border-b">
+                                        <h2 className="text-2xl font-bold text-gray-800">Confirmar Carga de Orden</h2>
+                                        <p className="text-gray-600 mt-2">
+                                            Se encontraron <strong>{productosPDF.length} productos</strong> para 
+                                            <strong> {proveedor}</strong> - Sucursal <strong>{sucursal}</strong>
+                                        </p>
+                                    </div>
+                                    
+                                    <div className="p-6 overflow-y-auto flex-1">
+                                        <table className="w-full text-sm">
+                                            <thead>
+                                                <tr className="bg-gray-100">
+                                                    <th className="p-2 text-left">Código</th>
+                                                    <th className="p-2 text-left">Descripción</th>
+                                                    <th className="p-2 text-center">Pedido</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {productosPDF.map(p => (
+                                                    <tr key={p.codigo} className="border-b">
+                                                        <td className="p-2">{p.codigo}</td>
+                                                        <td className="p-2">{p.descripcion}</td>
+                                                        <td className="p-2 text-center font-bold">{p.pedido}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    
+                                    <div className="p-6 border-t flex justify-end space-x-3">
+                                        <button 
+                                            onClick={cancelarCargaPDF}
+                                            className="px-6 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600"
+                                        >
+                                            Cancelar
+                                        </button>
+                                        <button 
+                                            onClick={confirmarCargaPDF}
+                                            className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                                        >
+                                            ✅ Confirmar y Cargar
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
                             <div className="flex justify-between items-center mb-4">
                                 <h1 className="text-3xl font-bold text-indigo-600">Control de Órdenes de Compra</h1>
                                 <div className="text-sm text-gray-500">
                                     <i className="fas fa-save"></i> Guardado automático
                                 </div>
+                            </div>
+
+                            {/* Sección de carga de PDF */}
+                            <div className="mb-6 p-4 bg-blue-50 border-2 border-blue-200 rounded-lg">
+                                <div className="flex items-center justify-between mb-2">
+                                    <div>
+                                        <h3 className="text-lg font-semibold text-blue-800">
+                                            <i className="fas fa-file-pdf"></i> Cargar Orden desde PDF
+                                        </h3>
+                                        <p className="text-sm text-blue-600">Sube un PDF de orden de compra para cargar automáticamente los productos</p>
+                                    </div>
+                                    <label className="cursor-pointer">
+                                        <input
+                                            type="file"
+                                            accept=".pdf"
+                                            onChange={handleCargarPDF}
+                                            className="hidden"
+                                            disabled={cargandoPDF}
+                                        />
+                                        <div className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center space-x-2">
+                                            {cargandoPDF ? (
+                                                <>
+                                                    <i className="fas fa-spinner fa-spin"></i>
+                                                    <span>Procesando...</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <i className="fas fa-upload"></i>
+                                                    <span>Seleccionar PDF</span>
+                                                </>
+                                            )}
+                                        </div>
+                                    </label>
+                                </div>
+                                {errorPDF && (
+                                    <div className="mt-2 p-3 bg-red-100 border border-red-300 rounded text-red-700 text-sm">
+                                        <i className="fas fa-exclamation-circle"></i> {errorPDF}
+                                    </div>
+                                )}
                             </div>
                             
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
@@ -1316,7 +1558,7 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                             <div className="bg-white rounded-lg shadow-lg p-12 text-center">
                                 <i className="fas fa-box-open text-6xl text-gray-300 mb-4"></i>
                                 <h3 className="text-xl text-gray-600 mb-2">No hay productos en la orden</h3>
-                                <p className="text-gray-500">Busca y agrega productos para comenzar</p>
+                                <p className="text-gray-500">Busca y agrega productos manualmente o carga un PDF</p>
                             </div>
                         )}
                     </div>
@@ -1327,7 +1569,7 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                                 <i className="fas fa-code"></i> Desarrollado por <strong>Jonathan Cheves</strong>
                             </div>
                             <div>
-                                <i className="fas fa-building"></i> Sucursales de Neuquén Ciudad | <strong>S.A.I.E.P.</strong>
+                                <i className="fas fa-building"></i> Sucursales de Neuquén Ciudad | <strong>SAIEP S.A.</strong>
                             </div>
                             <div className="text-sm text-gray-500">
                                 <i className="fas fa-copyright"></i> 2025 SAIEP S.A. - Todos los derechos reservados
