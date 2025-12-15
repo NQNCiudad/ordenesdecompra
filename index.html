@@ -981,7 +981,7 @@ DANONE-MASTELLONE|3045080|FORMULA LACTEA POLVO PROFUTURA ET2|NUTRILON|10|1200|GR
 DANONE-MASTELLONE|3179849|FORMULA LACTEA EN POLVO ETAPA 4|VITAL|8|1000|GR
 DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
 
-                        function parseProductos() {
+        function parseProductos() {
             const lines = productosData.trim().split('\n');
             return lines.map(line => {
                 const parts = line.split('|');
@@ -1053,13 +1053,20 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                 const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
                 let fullText = '';
                 
+                console.log(`📄 PDF tiene ${pdf.numPages} página(s)`);
+                
                 for (let i = 1; i <= pdf.numPages; i++) {
                     const page = await pdf.getPage(i);
                     const textContent = await page.getTextContent();
+                    
+                    // Mejorar extracción: cada item en su propia línea
                     const pageText = textContent.items.map(item => item.str).join(' ');
                     fullText += pageText + '\n';
+                    
+                    console.log(`   Página ${i}: ${textContent.items.length} elementos extraídos`);
                 }
                 
+                console.log(`✅ Extracción completa: ${fullText.length} caracteres`);
                 return fullText;
             };
 
@@ -1102,60 +1109,66 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                 const proveedoresEncontrados = new Set();
                 const codigosNoEncontrados = [];
                 
-                for (let i = 0; i < lineas.length; i++) {
-                    const linea = lineas[i];
-                    
-                    // Buscar códigos - PATRONES SIMPLIFICADOS Y MÁS AMPLIOS
-                    let codigo = null;
-                    
-                    // Patrón principal: "030" seguido de espacio y 6-8 dígitos
-                    let match = linea.match(/030\s+(\d{6,8})/);
-                    if (match) {
-                        codigo = match[1];
+                // CAMBIO CRÍTICO: Buscar TODOS los "030 XXXXXXX" en TODO el texto usando regex global
+                const regex = /\b030\s+(\d{7})\b/g;
+                let match;
+                const todosLosCodigos = [];
+                
+                while ((match = regex.exec(texto)) !== null) {
+                    todosLosCodigos.push({
+                        codigo: match[1],
+                        posicion: match.index
+                    });
+                }
+                
+                console.log(`🔍 Total códigos "030 XXXXXXX" en PDF: ${todosLosCodigos.length}`);
+                console.log('');
+                
+                // Procesar cada código encontrado
+                for (const {codigo, posicion} of todosLosCodigos) {
+                    if (productosYaAgregados.has(codigo)) {
+                        continue;
                     }
                     
-                    if (codigo) {
-                        productosDetectados++;
-                        
-                        if (productosYaAgregados.has(codigo)) {
-                            continue;
-                        }
-                        
-                        let bultos = 0;
-                        const partes = linea.trim().split(/\s+/);
-                        
-                        // Buscar U/M y retroceder 2 posiciones para Bto
-                        for (let j = 0; j < partes.length; j++) {
-                            if (partes[j].match(/^(GR|CM3|KGR?|LTS?|CU)$/i)) {
-                                if (j >= 2) {
-                                    const valorBto = partes[j - 2];
-                                    const num = parseInt(valorBto);
-                                    
-                                    if (!isNaN(num) && num > 0 && num < 10000) {
-                                        bultos = num;
-                                        break;
-                                    }
+                    productosDetectados++;
+                    
+                    // Extraer contexto alrededor del código para buscar Bto
+                    const contexto = texto.substring(Math.max(0, posicion - 50), Math.min(texto.length, posicion + 200));
+                    let bultos = 0;
+                    
+                    const partes = contexto.split(/\s+/);
+                    
+                    // Buscar U/M y retroceder 2 posiciones para Bto
+                    for (let j = 0; j < partes.length; j++) {
+                        if (partes[j].match(/^(GR|CM3|KGR?|LTS?|CU)$/i)) {
+                            if (j >= 2) {
+                                const valorBto = partes[j - 2];
+                                const num = parseInt(valorBto);
+                                
+                                if (!isNaN(num) && num > 0 && num < 10000) {
+                                    bultos = num;
+                                    break;
                                 }
                             }
                         }
+                    }
 
-                        // Buscar producto SOLO por código
-                        const producto = productos.find(p => p.codigo === codigo);
+                    // Buscar producto SOLO por código
+                    const producto = productos.find(p => p.codigo === codigo);
+                    
+                    if (producto) {
+                        productosYaAgregados.add(codigo);
+                        proveedoresEncontrados.add(producto.proveedor);
                         
-                        if (producto) {
-                            productosYaAgregados.add(codigo);
-                            proveedoresEncontrados.add(producto.proveedor);
-                            
-                            productosEncontrados.push({
-                                ...producto,
-                                pedido: bultos,
-                                recibido: 0
-                            });
-                            console.log(`✅ ${i + 1}: [${codigo}] Bto:${bultos} → ${producto.descripcion.substring(0,35)}...`);
-                        } else {
-                            codigosNoEncontrados.push(codigo);
-                            console.log(`❌ ${i + 1}: [${codigo}] Bto:${bultos} → NO EN BD`);
-                        }
+                        productosEncontrados.push({
+                            ...producto,
+                            pedido: bultos,
+                            recibido: 0
+                        });
+                        console.log(`✅ [${codigo}] Bto:${bultos} → ${producto.descripcion.substring(0,35)}...`);
+                    } else {
+                        codigosNoEncontrados.push(codigo);
+                        console.log(`❌ [${codigo}] Bto:${bultos} → NO EN BD`);
                     }
                 }
 
