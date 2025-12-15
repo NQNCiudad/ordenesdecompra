@@ -981,74 +981,7 @@ DANONE-MASTELLONE|3045080|FORMULA LACTEA POLVO PROFUTURA ET2|NUTRILON|10|1200|GR
 DANONE-MASTELLONE|3179849|FORMULA LACTEA EN POLVO ETAPA 4|VITAL|8|1000|GR
 DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
 
-                function parseProductos() {
-            const lines = productosData.trim().split('\n');
-            return lines.map(line => {
-                const parts = line.split('|');
-                return { 
-                    proveedor: parts[0], 
-                    codigo: parts[1], 
-                    descripcion: parts[2], 
-                    marca: parts[3], 
-                    bulto: parseInt(parts[4]), 
-                    contenido: parseFloat(parts[5]), 
-                    unidad: parts[6] 
-                };
-            });
-        }
-
-        const productos = parseProductos();
-        const proveedores = ['QUILMES', 'CCU', 'COCA COLA', 'DANONE-MASTELLONE'];
-        const sucursales = ['006', '068', '162', '225', '226', '229', '232', '233', '235', '236', '237', '239', '240', '248'];
-
-        function App() {
-            const [proveedor, setProveedor] = useState(() => {
-                return localStorage.getItem('proveedor') || '';
-            });
-            
-            const [sucursal, setSucursal] = useState(() => {
-                return localStorage.getItem('sucursal') || '';
-            });
-            
-            const [productosSeleccionados, setProductosSeleccionados] = useState(() => {
-                const saved = localStorage.getItem('productosSeleccionados');
-                return saved ? JSON.parse(saved) : [];
-            });
-            
-            const [busqueda, setBusqueda] = useState('');
-            const [mensajeGuardado, setMensajeGuardado] = useState('');
-            const [cargandoPDF, setCargandoPDF] = useState(false);
-            const [errorPDF, setErrorPDF] = useState('');
-            const [mostrarModalPDF, setMostrarModalPDF] = useState(false);
-            const [productosPDF, setProductosPDF] = useState([]);
-
-            useEffect(() => {
-                localStorage.setItem('proveedor', proveedor);
-                if (proveedor) {
-                    mostrarMensajeGuardado();
-                }
-            }, [proveedor]);
-
-            useEffect(() => {
-                localStorage.setItem('sucursal', sucursal);
-                if (sucursal) {
-                    mostrarMensajeGuardado();
-                }
-            }, [sucursal]);
-
-            useEffect(() => {
-                localStorage.setItem('productosSeleccionados', JSON.stringify(productosSeleccionados));
-                if (productosSeleccionados.length > 0) {
-                    mostrarMensajeGuardado();
-                }
-            }, [productosSeleccionados]);
-
-            const mostrarMensajeGuardado = () => {
-                setMensajeGuardado('✅ Datos guardados');
-                setTimeout(() => setMensajeGuardado(''), 2000);
-            };
-
-            const extractTextFromPDF = async (file) => {
+                const extractTextFromPDF = async (file) => {
                 const arrayBuffer = await file.arrayBuffer();
                 const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
                 let fullText = '';
@@ -1056,21 +989,21 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                 for (let i = 1; i <= pdf.numPages; i++) {
                     const page = await pdf.getPage(i);
                     const textContent = await page.getTextContent();
-                    const pageText = textContent.items.map(item => item.str).join(' ');
+                    // Importante: unimos con un espacio simple para mantener la estructura de línea lo mejor posible
+                    const pageText = textContent.items.map(item => item.str).join(' '); 
                     fullText += pageText + '\n';
                 }
-                
                 return fullText;
             };
 
             const parsearPDF = (texto) => {
-                const lineas = texto.split('\n');
+                // Dividimos por saltos de línea, pero filtramos líneas vacías
+                const lineas = texto.split('\n').filter(l => l.trim().length > 0);
                 const productosEncontrados = [];
                 const productosYaAgregados = new Set();
-                let proveedorDetectado = '';
                 let sucursalDetectada = '';
 
-                // Detectar sucursal
+                // --- 1. Detectar sucursal (Mantenemos tu lógica que funcionaba) ---
                 for (const linea of lineas) {
                     const matchSucursal = linea.match(/\[(\d{3})\]/);
                     if (matchSucursal && sucursales.includes(matchSucursal[1])) {
@@ -1079,120 +1012,84 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                     }
                 }
 
-                console.log('============================================');
-                console.log('📄 ANÁLISIS DEL PDF');
-                console.log('============================================');
-                console.log('Sucursal detectada:', sucursalDetectada);
-                console.log('Total líneas:', lineas.length);
-                console.log('Modo: Búsqueda por CÓDIGO (ignora proveedor del PDF)');
-                console.log('============================================');
-
-                let productosDetectados = 0;
-                const proveedoresEncontrados = new Set();
+                console.log('--- INICIO CRUCE DE DATOS ---');
                 
+                // --- 2. Barrido línea por línea buscando patrón: 030 + CODIGO ---
                 for (let i = 0; i < lineas.length; i++) {
                     const linea = lineas[i];
-                    
-                    // Buscar códigos con múltiples patrones
-                    let codigo = null;
-                    
-                    // Patrón 1: * 030 CODIGO (con asterisco)
-                    let match = linea.match(/[\*]\s*0?3[0o]\s+(\d{6,})/i);
-                    if (match) {
-                        codigo = match[1];
-                    }
-                    
-                    // Patrón 2: 030 CODIGO (sin asterisco, al inicio)
-                    if (!codigo) {
-                        match = linea.match(/^\s*0?3[0o]\s+(\d{6,})/i);
-                        if (match) {
-                            codigo = match[1];
-                        }
-                    }
-                    
-                    // Patrón 3: Buscar secuencia 030 seguida de número de 6+ dígitos
-                    if (!codigo) {
-                        match = linea.match(/\b0?3[0o]\s+(\d{6,})\b/i);
-                        if (match) {
-                            codigo = match[1];
-                        }
-                    }
-                    
-                    if (codigo) {
-                        productosDetectados++;
-                        
-                        console.log(`Línea ${i + 1}: Código detectado [${codigo}]`);
-                        console.log(`   Contenido: ${linea.substring(0, 100)}...`);
-                        
-                        if (productosYaAgregados.has(codigo)) {
-                            console.log(`⚠️ Duplicado ignorado: ${codigo}`);
-                            continue;
-                        }
-                        
-                        let bultos = 0;
-                        const partes = linea.trim().split(/\s+/);
-                        
-                        // Buscar U/M y retroceder 2 posiciones para Bto
-                        for (let j = 0; j < partes.length; j++) {
-                            if (partes[j].match(/^(GR|CM3|KGR?|LTS?|CU)$/i)) {
-                                if (j >= 2) {
-                                    const valorBto = partes[j - 2];
-                                    const num = parseInt(valorBto);
-                                    
-                                    if (!isNaN(num) && num > 0 && num < 10000) {
-                                        bultos = num;
-                                        console.log(`   🔍 Bto detectado: ${bultos}`);
+
+                    // REGEX CLAVE: Busca "030" seguido de un número de 4 a 8 dígitos.
+                    // (?:\*\s*)? -> Permite que haya un asterisco opcional al principio (como en tu imagen)
+                    // 0?30       -> Busca 030 o 30
+                    // \s+        -> Espacios
+                    // (\d{4,8})  -> Captura el CÓDIGO del artículo
+                    const matchCodigo = linea.match(/(?:\*\s*)?0?30\s+(\d{4,8})/);
+
+                    if (matchCodigo) {
+                        const codigoPDF = matchCodigo[1];
+
+                        // --- 3. CRUCE: Buscamos este código en TU base de datos ---
+                        const productoBD = productos.find(p => p.codigo === codigoPDF);
+
+                        if (productoBD) {
+                            // Si el producto existe en tu sistema, procesamos la cantidad (Bto)
+                            
+                            let bulto = 0;
+                            // REGEX CANTIDAD: Busca el Bulto basándose en que está cerca de la Unidad de Medida.
+                            // Patrón imagen: Bto (num) + Cont (num) + UM (texto) -> Ej: "1 1 CU" o "24 200 CM3"
+                            // Buscamos: Numero + Espacio + Numero + Espacio + (CU/CM3/GR/KG/LT)
+                            const matchBulto = linea.match(/(\d+)\s+(?:[\d\.,]+)\s+(CU|CM3|GR|KG|KGR|LT|LTS|ML)/i);
+
+                            if (matchBulto) {
+                                bulto = parseInt(matchBulto[1]);
+                            } else {
+                                // Fallback: Si falla el regex estricto, buscamos el antepenúltimo elemento numérico
+                                // asumiendo que el final de la línea tiene la estructura de precios/ivas
+                                const partes = linea.trim().split(/\s+/);
+                                for(let k=0; k < partes.length; k++) {
+                                    // Buscamos la unidad de medida
+                                    if(['CU','CM3','GR','KG','KGR','LT','LTS','ML'].includes(partes[k].toUpperCase())) {
+                                        // El Bulto suele estar 2 posiciones antes (Bto -> Cont -> UM)
+                                        if(k >= 2) {
+                                            const posibleBulto = parseInt(partes[k-2]);
+                                            if(!isNaN(posibleBulto)) bulto = posibleBulto;
+                                        }
                                         break;
                                     }
                                 }
                             }
-                        }
 
-                        // Buscar producto SOLO por código
-                        const producto = productos.find(p => p.codigo === codigo);
-                        
-                        if (producto) {
-                            productosYaAgregados.add(codigo);
-                            proveedoresEncontrados.add(producto.proveedor);
-                            
-                            productosEncontrados.push({
-                                ...producto,
-                                pedido: bultos,
-                                recibido: 0
-                            });
-                            console.log(`   ✅ Encontrado: ${producto.descripcion} (${producto.proveedor})`);
-                        } else {
-                            console.log(`   ❌ Código ${codigo} NO está en la base de datos`);
-                            console.log(`   💡 Verifica que el código ${codigo} esté en productosData`);
+                            if (!productosYaAgregados.has(codigoPDF)) {
+                                productosYaAgregados.add(codigoPDF);
+                                
+                                // AGREGAMOS EL PRODUCTO CRUZADO
+                                // Usamos los datos de TU base (Proveedor, Desc, Marca) para que sea limpio
+                                // Solo usamos el "bulto" (cantidad) del PDF.
+                                productosEncontrados.push({
+                                    ...productoBD,
+                                    pedido: bulto > 0 ? bulto : 0,
+                                    recibido: 0
+                                });
+                                console.log(`✅ ENCONTRADO: ${codigoPDF} | Cant: ${bulto} | ${productoBD.descripcion}`);
+                            }
                         }
                     }
                 }
 
-                // Determinar el proveedor basado en los productos encontrados
-                // Si todos los productos son del mismo proveedor, usar ese
-                const proveedoresArray = Array.from(proveedoresEncontrados);
-                if (proveedoresArray.length === 1) {
-                    proveedorDetectado = proveedoresArray[0];
-                } else if (proveedoresArray.length > 1) {
-                    // Si hay múltiples proveedores, usar el más común
+                // --- 4. Detectar Proveedor Automáticamente ---
+                // Contamos qué proveedor aparece más veces en los productos encontrados
+                let proveedorDetectado = '';
+                if (productosEncontrados.length > 0) {
                     const conteo = {};
                     productosEncontrados.forEach(p => {
                         conteo[p.proveedor] = (conteo[p.proveedor] || 0) + 1;
                     });
-                    proveedorDetectado = Object.keys(conteo).reduce((a, b) => 
-                        conteo[a] > conteo[b] ? a : b
-                    );
+                    // Ordenamos y sacamos el que más repite
+                    proveedorDetectado = Object.keys(conteo).reduce((a, b) => conteo[a] > conteo[b] ? a : b);
+                    console.log(`Proveedor detectado por mayoría: ${proveedorDetectado}`);
+                } else {
+                    console.log('No se encontraron productos compatibles con la base de datos.');
                 }
-
-                console.log('============================================');
-                console.log('📊 RESUMEN');
-                console.log('============================================');
-                console.log('Códigos detectados:', productosDetectados);
-                console.log('Productos encontrados:', productosEncontrados.length);
-                console.log('No encontrados:', productosDetectados - productosEncontrados.length);
-                console.log('Proveedores detectados:', Array.from(proveedoresEncontrados).join(', '));
-                console.log('Proveedor principal:', proveedorDetectado);
-                console.log('============================================');
 
                 return {
                     proveedor: proveedorDetectado,
@@ -1200,452 +1097,3 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                     productos: productosEncontrados
                 };
             };
-
-            const handleCargarPDF = async (event) => {
-                const file = event.target.files[0];
-                if (!file || file.type !== 'application/pdf') {
-                    setErrorPDF('Por favor seleccione un archivo PDF válido');
-                    return;
-                }
-
-                setCargandoPDF(true);
-                setErrorPDF('');
-
-                try {
-                    const texto = await extractTextFromPDF(file);
-                    const resultado = parsearPDF(texto);
-
-                    if (!resultado.sucursal) {
-                        setErrorPDF('No se pudo detectar la sucursal en el PDF');
-                        setCargandoPDF(false);
-                        return;
-                    }
-
-                    if (resultado.productos.length === 0) {
-                        setErrorPDF('No se encontraron productos en el PDF. Verifica que los códigos estén en tu base de datos.');
-                        setCargandoPDF(false);
-                        return;
-                    }
-
-                    // Mostrar modal de confirmación
-                    setProductosPDF(resultado.productos);
-                    setProveedor(resultado.proveedor || 'MIXTO');
-                    setSucursal(resultado.sucursal);
-                    setMostrarModalPDF(true);
-
-                } catch (error) {
-                    console.error('Error al procesar PDF:', error);
-                    setErrorPDF('Error al procesar el PDF: ' + error.message);
-                } finally {
-                    setCargandoPDF(false);
-                    event.target.value = ''; // Reset input
-                }
-            };
-
-            const confirmarCargaPDF = () => {
-                setProductosSeleccionados(productosPDF);
-                setMostrarModalPDF(false);
-                setProductosPDF([]);
-                setMensajeGuardado('✅ Orden cargada desde PDF');
-                setTimeout(() => setMensajeGuardado(''), 2000);
-            };
-
-            const cancelarCargaPDF = () => {
-                setMostrarModalPDF(false);
-                setProductosPDF([]);
-            };
-
-            const productosFiltrados = productos.filter(p => 
-                p.proveedor === proveedor && 
-                (p.descripcion.toLowerCase().includes(busqueda.toLowerCase()) || 
-                 p.codigo.includes(busqueda) ||
-                 p.marca.toLowerCase().includes(busqueda.toLowerCase()))
-            );
-
-            const agregarProducto = (producto) => {
-                if (!proveedor || !sucursal) {
-                    alert('Seleccione proveedor y sucursal');
-                    return;
-                }
-                const existe = productosSeleccionados.find(p => p.codigo === producto.codigo);
-                if (existe) {
-                    alert('Producto ya agregado');
-                    return;
-                }
-                setProductosSeleccionados([...productosSeleccionados, {
-                    ...producto,
-                    pedido: 0,
-                    recibido: 0
-                }]);
-            };
-
-            const actualizarCantidad = (codigo, campo, valor) => {
-                setProductosSeleccionados(productosSeleccionados.map(p => 
-                    p.codigo === codigo ? { ...p, [campo]: parseInt(valor) || 0 } : p
-                ));
-            };
-
-            const eliminarProducto = (codigo) => {
-                setProductosSeleccionados(productosSeleccionados.filter(p => p.codigo !== codigo));
-            };
-
-            const calcularDiferencia = (pedido, recibido) => recibido - pedido;
-            
-            const calcularPorcentaje = (pedido, recibido) => {
-                if (pedido === 0) return 100;
-                return Math.round((recibido / pedido) * 100);
-            };
-
-            const exportarExcel = () => {
-                let html = '<html><head><meta charset="UTF-8"><style>.header{background-color:#4F46E5;color:white;font-weight:bold;text-align:center}.completo{background-color:#D1FAE5;color:#065F46;font-weight:bold}.faltante{background-color:#FEE2E2;color:#991B1B;font-weight:bold}.total{background-color:#1F2937;color:white;font-weight:bold}td{border:1px solid #E5E7EB;padding:8px}table{border-collapse:collapse;width:100%}</style></head><body><table><tr><td colspan="9" class="header">Control de Órdenes de Compra</td></tr><tr><td colspan="9">Proveedor: ' + proveedor + ' | Sucursal: ' + sucursal + '</td></tr><tr class="header"><td>Código</td><td>Descripción</td><td>Marca</td><td>Bulto</td><td>Pedido</td><td>Recibido</td><td>Diferencia</td><td>Estado</td><td>%</td></tr>';
-
-                productosSeleccionados.forEach(p => {
-                    const dif = calcularDiferencia(p.pedido, p.recibido);
-                    const pct = calcularPorcentaje(p.pedido, p.recibido);
-                    const clase = dif >= 0 ? 'completo' : 'faltante';
-                    const estado = dif >= 0 ? 'Completo' : 'Faltante';
-                    html += '<tr class="' + clase + '"><td>' + p.codigo + '</td><td>' + p.descripcion + '</td><td>' + p.marca + '</td><td>' + p.bulto + '</td><td>' + p.pedido + '</td><td>' + p.recibido + '</td><td>' + (dif > 0 ? '+' : '') + dif + '</td><td>' + estado + '</td><td>' + pct + '%</td></tr>';
-                });
-
-                const totalPedido = productosSeleccionados.reduce((sum, p) => sum + p.pedido, 0);
-                const totalRecibido = productosSeleccionados.reduce((sum, p) => sum + p.recibido, 0);
-                const totalDif = totalRecibido - totalPedido;
-                const cumplimientoGlobal = calcularPorcentaje(totalPedido, totalRecibido);
-
-                html += '<tr class="total"><td colspan="4">TOTALES</td><td>' + totalPedido + '</td><td>' + totalRecibido + '</td><td>' + (totalDif > 0 ? '+' : '') + totalDif + '</td><td colspan="2">' + cumplimientoGlobal + '% Cumplimiento</td></tr></table></body></html>';
-
-                const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'orden_' + proveedor + '_' + sucursal + '_' + new Date().toISOString().split('T')[0] + '.xls';
-                a.click();
-            };
-
-            const limpiarOrden = () => {
-                if (confirm('¿Está seguro de limpiar toda la orden? Esto eliminará todos los datos guardados.')) {
-                    setProductosSeleccionados([]);
-                    setProveedor('');
-                    setSucursal('');
-                    localStorage.removeItem('productosSeleccionados');
-                    localStorage.removeItem('proveedor');
-                    localStorage.removeItem('sucursal');
-                    setMensajeGuardado('🗑️ Datos eliminados');
-                    setTimeout(() => setMensajeGuardado(''), 2000);
-                }
-            };
-
-            return (
-                <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 p-4 md:p-8">
-                    <div className="max-w-7xl mx-auto">
-                        {/* Mensaje de guardado */}
-                        {mensajeGuardado && (
-                            <div className="fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg z-50 animate-pulse">
-                                {mensajeGuardado}
-                            </div>
-                        )}
-
-                        {/* Modal de confirmación PDF */}
-                        {mostrarModalPDF && (
-                            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                                <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-                                    <div className="p-6 border-b">
-                                        <h2 className="text-2xl font-bold text-gray-800">Confirmar Carga de Orden</h2>
-                                        <p className="text-gray-600 mt-2">
-                                            Se encontraron <strong>{productosPDF.length} productos</strong> para 
-                                            <strong> {proveedor}</strong> - Sucursal <strong>{sucursal}</strong>
-                                        </p>
-                                    </div>
-                                    
-                                    <div className="p-6 overflow-y-auto flex-1">
-                                        <table className="w-full text-sm">
-                                            <thead>
-                                                <tr className="bg-gray-100">
-                                                    <th className="p-2 text-left">Código</th>
-                                                    <th className="p-2 text-left">Descripción</th>
-                                                    <th className="p-2 text-center">Pedido</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {productosPDF.map(p => (
-                                                    <tr key={p.codigo} className="border-b">
-                                                        <td className="p-2">{p.codigo}</td>
-                                                        <td className="p-2">{p.descripcion}</td>
-                                                        <td className="p-2 text-center font-bold">{p.pedido}</td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                    
-                                    <div className="p-6 border-t flex justify-end space-x-3">
-                                        <button 
-                                            onClick={cancelarCargaPDF}
-                                            className="px-6 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600"
-                                        >
-                                            Cancelar
-                                        </button>
-                                        <button 
-                                            onClick={confirmarCargaPDF}
-                                            className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
-                                        >
-                                            ✅ Confirmar y Cargar
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-                            <div className="flex justify-between items-center mb-4">
-                                <h1 className="text-3xl font-bold text-indigo-600">Control de Órdenes de Compra</h1>
-                                <div className="text-sm text-gray-500">
-                                    <i className="fas fa-save"></i> Guardado automático
-                                </div>
-                            </div>
-
-                            {/* Sección de carga de PDF */}
-                            <div className="mb-6 p-4 bg-blue-50 border-2 border-blue-200 rounded-lg">
-                                <div className="flex items-center justify-between mb-2">
-                                    <div>
-                                        <h3 className="text-lg font-semibold text-blue-800">
-                                            <i className="fas fa-file-pdf"></i> Cargar Orden desde PDF
-                                        </h3>
-                                        <p className="text-sm text-blue-600">Sube un PDF de orden de compra para cargar automáticamente los productos</p>
-                                    </div>
-                                    <label className="cursor-pointer">
-                                        <input
-                                            type="file"
-                                            accept=".pdf"
-                                            onChange={handleCargarPDF}
-                                            className="hidden"
-                                            disabled={cargandoPDF}
-                                        />
-                                        <div className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center space-x-2">
-                                            {cargandoPDF ? (
-                                                <>
-                                                    <i className="fas fa-spinner fa-spin"></i>
-                                                    <span>Procesando...</span>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <i className="fas fa-upload"></i>
-                                                    <span>Seleccionar PDF</span>
-                                                </>
-                                            )}
-                                        </div>
-                                    </label>
-                                </div>
-                                {errorPDF && (
-                                    <div className="mt-2 p-3 bg-red-100 border border-red-300 rounded text-red-700 text-sm">
-                                        <i className="fas fa-exclamation-circle"></i> {errorPDF}
-                                    </div>
-                                )}
-                            </div>
-                            
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Proveedor</label>
-                                    <select 
-                                        className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                                        value={proveedor}
-                                        onChange={(e) => setProveedor(e.target.value)}
-                                    >
-                                        <option value="">Seleccione proveedor</option>
-                                        {proveedores.map(p => <option key={p} value={p}>{p}</option>)}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Sucursal</label>
-                                    <select 
-                                        className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                                        value={sucursal}
-                                        onChange={(e) => setSucursal(e.target.value)}
-                                    >
-                                        <option value="">Seleccione sucursal</option>
-                                        {sucursales.map(s => <option key={s} value={s}>{s}</option>)}
-                                    </select>
-                                </div>
-                            </div>
-
-                            {proveedor && (
-                                <div className="mb-6">
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Buscar producto</label>
-                                    <input
-                                        type="text"
-                                        className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                                        placeholder="Código, descripción o marca..."
-                                        value={busqueda}
-                                        onChange={(e) => setBusqueda(e.target.value)}
-                                    />
-                                    
-                                    {busqueda && (
-                                        <div className="mt-2 max-h-60 overflow-y-auto border border-gray-200 rounded-lg">
-                                            {productosFiltrados.map(p => (
-                                                <div key={p.codigo} className="p-3 hover:bg-gray-50 border-b cursor-pointer flex justify-between items-center"
-                                                     onClick={() => agregarProducto(p)}>
-                                                    <div>
-                                                        <div className="font-medium">{p.codigo} - {p.descripcion}</div>
-                                                        <div className="text-sm text-gray-600">{p.marca} | Bulto: {p.bulto} | {p.contenido} {p.unidad}</div>
-                                                    </div>
-                                                    <button className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
-                                                        Agregar
-                                                    </button>
-                                                </div>
-                                            ))}
-                                            {productosFiltrados.length === 0 && (
-                                                <div className="p-4 text-center text-gray-500">
-                                                    No se encontraron productos
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-
-                        {productosSeleccionados.length > 0 && (
-                            <div className="bg-white rounded-lg shadow-lg p-6">
-                                <div className="flex justify-between items-center mb-4">
-                                    <h2 className="text-2xl font-bold text-gray-800">
-                                        Orden Actual ({productosSeleccionados.length} productos)
-                                    </h2>
-                                    <div className="space-x-2">
-                                        <button 
-                                            onClick={exportarExcel}
-                                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-                                        >
-                                            📊 Exportar Excel
-                                        </button>
-                                        <button 
-                                            onClick={limpiarOrden}
-                                            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-                                        >
-                                            🗑️ Limpiar
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <div className="overflow-x-auto">
-                                    <table className="w-full">
-                                        <thead>
-                                            <tr className="bg-indigo-600 text-white">
-                                                <th className="p-2 text-left">Código</th>
-                                                <th className="p-2 text-left">Descripción</th>
-                                                <th className="p-2 text-left">Marca</th>
-                                                <th className="p-2 text-center">Bulto</th>
-                                                <th className="p-2 text-center">Pedido</th>
-                                                <th className="p-2 text-center">Recibido</th>
-                                                <th className="p-2 text-center">Diferencia</th>
-                                                <th className="p-2 text-center">Estado</th>
-                                                <th className="p-2 text-center">%</th>
-                                                <th className="p-2"></th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {productosSeleccionados.map(p => {
-                                                const dif = calcularDiferencia(p.pedido, p.recibido);
-                                                const pct = calcularPorcentaje(p.pedido, p.recibido);
-                                                const completo = dif >= 0 && pct >= 100;
-                                                return (
-                                                    <tr key={p.codigo} className={'border-b ' + (completo ? 'bg-green-50' : 'bg-red-50')}>
-                                                        <td className="p-2">{p.codigo}</td>
-                                                        <td className="p-2">{p.descripcion}</td>
-                                                        <td className="p-2">{p.marca}</td>
-                                                        <td className="p-2 text-center">{p.bulto}</td>
-                                                        <td className="p-2">
-                                                            <input 
-                                                                type="number" 
-                                                                className="w-20 p-1 border rounded text-center"
-                                                                value={p.pedido}
-                                                                onChange={(e) => actualizarCantidad(p.codigo, 'pedido', e.target.value)}
-                                                            />
-                                                        </td>
-                                                        <td className="p-2">
-                                                            <input 
-                                                                type="number" 
-                                                                className="w-20 p-1 border rounded text-center"
-                                                                value={p.recibido}
-                                                                onChange={(e) => actualizarCantidad(p.codigo, 'recibido', e.target.value)}
-                                                            />
-                                                        </td>
-                                                        <td className={'p-2 text-center font-bold ' + (dif > 0 ? 'text-green-600' : dif < 0 ? 'text-red-600' : 'text-gray-600')}>
-                                                            {dif > 0 ? '+' : ''}{dif}
-                                                        </td>
-                                                        <td className="p-2 text-center">
-                                                            <span className={'px-2 py-1 rounded ' + (completo ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800')}>
-                                                                {completo ? '✅ Completo' : '❌ Faltante'}
-                                                            </span>
-                                                        </td>
-                                                        <td className="p-2 text-center font-bold">{pct}%</td>
-                                                        <td className="p-2 text-center">
-                                                            <button 
-                                                                onClick={() => eliminarProducto(p.codigo)}
-                                                                className="text-red-600 hover:text-red-800"
-                                                            >
-                                                                ❌
-                                                            </button>
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                        <tfoot>
-                                            <tr className="bg-gray-800 text-white font-bold">
-                                                <td colSpan="4" className="p-2 text-right">TOTALES:</td>
-                                                <td className="p-2 text-center">
-                                                    {productosSeleccionados.reduce((sum, p) => sum + p.pedido, 0)}
-                                                </td>
-                                                <td className="p-2 text-center">
-                                                    {productosSeleccionados.reduce((sum, p) => sum + p.recibido, 0)}
-                                                </td>
-                                                <td className="p-2 text-center">
-                                                    {productosSeleccionados.reduce((sum, p) => sum + calcularDiferencia(p.pedido, p.recibido), 0)}
-                                                </td>
-                                                <td colSpan="3" className="p-2 text-center">
-                                                    {calcularPorcentaje(
-                                                        productosSeleccionados.reduce((sum, p) => sum + p.pedido, 0),
-                                                        productosSeleccionados.reduce((sum, p) => sum + p.recibido, 0)
-                                                    )}% Cumplimiento Global
-                                                </td>
-                                            </tr>
-                                        </tfoot>
-                                    </table>
-                                </div>
-                            </div>
-                        )}
-
-                        {productosSeleccionados.length === 0 && proveedor && sucursal && (
-                            <div className="bg-white rounded-lg shadow-lg p-12 text-center">
-                                <i className="fas fa-box-open text-6xl text-gray-300 mb-4"></i>
-                                <h3 className="text-xl text-gray-600 mb-2">No hay productos en la orden</h3>
-                                <p className="text-gray-500">Busca y agrega productos manualmente o carga un PDF</p>
-                            </div>
-                        )}
-                    </div>
-
-                    <footer className="mt-12 pt-8 border-t border-gray-200 text-center text-gray-600">
-                        <div className="space-y-2">
-                            <div>
-                                <i className="fas fa-code"></i> Desarrollado por <strong>Jonathan Cheves</strong>
-                            </div>
-                            <div>
-                                <i className="fas fa-building"></i> Sucursales de Neuquén Ciudad | <strong>SAIEP S.A.</strong>
-                            </div>
-                            <div className="text-sm text-gray-500">
-                                <i className="fas fa-copyright"></i> 2025 SAIEP S.A. - Todos los derechos reservados
-                            </div>
-                        </div>
-                    </footer>
-                </div>
-            );
-        }
-
-        const root = ReactDOM.createRoot(document.getElementById('app'));
-        root.render(<App />);
-    </script>
-</head>
-<body>
-    <div id="app"></div>
-</body>
-</html>
