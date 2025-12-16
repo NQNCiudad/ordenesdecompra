@@ -1111,11 +1111,12 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                 const codigosNoEncontrados = [];
                 
                 // BÚSQUEDA CON DOS PATRONES: "030" y "005"
+                // Los patrones ahora ignoran asteriscos (*) que puedan venir antes
                 const todosLosCodigos = [];
                 let match;
                 
-                // Patrón 1: "030 XXXXXXX" (7 dígitos)
-                const regex030 = /\b030\s+(\d{7})\b/g;
+                // Patrón 1: "030 XXXXXXX" (7 dígitos) - puede tener * adelante
+                const regex030 = /(?:^|\s)\*?\s*030\s+(\d{7})\b/gm;
                 while ((match = regex030.exec(texto)) !== null) {
                     todosLosCodigos.push({
                         codigo: match[1],
@@ -1124,8 +1125,8 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                     });
                 }
                 
-                // Patrón 2: "005 XXXXXXX" (7 dígitos para bebidas - igual que 030)
-                const regex005 = /\b005\s+(\d{7})\b/g;
+                // Patrón 2: "005 XXXXXXX" (7 dígitos) - puede tener * adelante
+                const regex005 = /(?:^|\s)\*?\s*005\s+(\d{7})\b/gm;
                 while ((match = regex005.exec(texto)) !== null) {
                     todosLosCodigos.push({
                         codigo: match[1],
@@ -1649,7 +1650,7 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                                 <i className="fas fa-code"></i> Desarrollado por <strong>Jonathan Cheves</strong>
                             </div>
                             <div>
-                                <i className="fas fa-building"></i> Sucursales de Neuquén Ciudad | <strong>SAIEP </strong>
+                                <i className="fas fa-building"></i> Sucursales de Neuquén Ciudad | <strong>SAIEP</strong>
                             </div>
                             <div className="text-sm text-gray-500">
                                 <i className="fas fa-copyright"></i> 2025 SAIEP - Todos los derechos reservados
@@ -1668,3 +1669,6 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
     <div id="app"></div>
 </body>
 </html>
+
+
+        
