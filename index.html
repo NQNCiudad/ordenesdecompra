@@ -1083,115 +1083,104 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
             };
 
     const parsearPDF = (texto) => {
-    // Dividir por saltos de línea y también por múltiples espacios
-const lineas = texto.split(/\n+/);
-console.log('📄 Total líneas detectadas:', lineas.length);
-console.log('📄 Primeras 10 líneas:', lineas.slice(0, 10));
     const productosEncontrados = [];
     const productosYaAgregados = new Set();
     let proveedorDetectado = '';
     let sucursalDetectada = '';
 
     // Detectar sucursal
-    for (const linea of lineas) {
-        const matchSucursal = linea.match(/\[(\d{3})\]/);
-        if (matchSucursal && sucursales.includes(matchSucursal[1])) {
-            sucursalDetectada = matchSucursal[1];
-            break;
-        }
+    const matchSucursal = texto.match(/\[(\d{3})\]/);
+    if (matchSucursal && sucursales.includes(matchSucursal[1])) {
+        sucursalDetectada = matchSucursal[1];
     }
 
     console.log('============================================');
-    console.log('📄 ANÁLISIS DEL PDF - MODO LÍNEA COMPLETA');
+    console.log('📄 ANÁLISIS DEL PDF - BÚSQUEDA EN TEXTO COMPLETO');
     console.log('============================================');
     console.log('Sucursal detectada:', sucursalDetectada);
-    console.log('Total líneas:', lineas.length);
+    console.log('Caracteres totales:', texto.length);
     console.log('');
 
     let productosDetectados = 0;
     const proveedoresEncontrados = new Set();
     const codigosNoEncontrados = [];
-
-    // Procesar línea por línea
-    for (let i = 0; i < lineas.length; i++) {
-        const linea = lineas[i];
-        
-        // Buscar patrón "030 XXXXXXX" o "005 XXXXXXX"
-        const match030 = linea.match(/\b030\s+(\d{7})\b/);
-        const match005 = linea.match(/\b005\s+(\d{7})\b/);
-        
-        if (match030 || match005) {
-            const tipo = match030 ? '030' : '005';
-            const codigo = match030 ? match030[1] : match005[1];
-            
-            if (productosYaAgregados.has(codigo)) {
-                continue;
-            }
-            
-            productosDetectados++;
-            let cantidad = 0;
-            
-            // Dividir la línea en partes
-            const partes = linea.split(/\s+/);
-            
-            if (tipo === '030') {
-                // Para 030: buscar U/M y retroceder 2 posiciones
-                for (let j = 0; j < partes.length; j++) {
-                    if (partes[j].match(/^(GR|CM3|KGR?|LTS?|CU)$/i)) {
-                        if (j >= 2) {
-                            const valorBto = partes[j - 2];
-                            const num = parseInt(valorBto);
-                            if (!isNaN(num) && num > 0 && num < 10000) {
-                                cantidad = num;
-                                console.log(`   [030] ${codigo} → Bto: ${cantidad}`);
-                                break;
-                            }
-                        }
-                    }
-                }
-            } else if (tipo === '005') {
-    // Para códigos 005: Buscar U/M primero, luego la cantidad que sigue
-    for (let j = 0; j < partes.length; j++) {
-        // Buscar la unidad de medida (U/M)
-        if (partes[j].match(/^(GR|CM3|KGR?|LTS?|CU)$/i)) {
-            // La cantidad está DESPUÉS de la U/M
-            // Buscar en las siguientes 3 posiciones
-            for (let offset = 1; offset <= 3; offset++) {
-                if (j + offset < partes.length) {
-                    const valorCant = partes[j + offset];
-                    const valorLimpio = valorCant.replace(/[^\d.,]/g, '').replace(',', '.');
-                    const num = parseFloat(valorLimpio);
-                    
-                    // Debe ser un número razonable para cantidad
-                    if (!isNaN(num) && num > 0 && num < 10000) {
-                        cantidad = Math.floor(num);
-                        console.log(`   🔍 [005] ${codigo} → U/M="${partes[j]}" + ${offset} pos = "${valorCant}" → Cant: ${cantidad}`);
-                        break;
-                    }
-                }
-            }
-            if (cantidad > 0) break;
-        }
+    
+    // BÚSQUEDA CON DOS PATRONES en todo el texto
+    const todosLosCodigos = [];
+    let match;
+    
+    // Patrón 1: "030 XXXXXXX" (7 dígitos)
+    const regex030 = /\b030\s+(\d{7})\b/gm;
+    while ((match = regex030.exec(texto)) !== null) {
+        todosLosCodigos.push({
+            codigo: match[1],
+            posicion: match.index,
+            tipo: '030'
+        });
     }
-}
-
-            // Buscar producto en la base de datos
-            const producto = productos.find(p => p.codigo === codigo);
-            
-            if (producto) {
-                productosYaAgregados.add(codigo);
-                proveedoresEncontrados.add(producto.proveedor);
-                
-                productosEncontrados.push({
-                    ...producto,
-                    pedido: cantidad,
-                    recibido: 0
-                });
-                console.log(`✅ [${tipo}] ${codigo} → Cant: ${cantidad} → ${producto.descripcion.substring(0,30)}...`);
-            } else {
-                codigosNoEncontrados.push(codigo);
-                console.log(`❌ [${tipo}] ${codigo} → Cant: ${cantidad} → NO EN BD`);
+    
+    // Patrón 2: "005 XXXXXXX" (7 dígitos)
+    const regex005 = /\b005\s+(\d{7})\b/gm;
+    while ((match = regex005.exec(texto)) !== null) {
+        todosLosCodigos.push({
+            codigo: match[1],
+            posicion: match.index,
+            tipo: '005'
+        });
+    }
+    
+    console.log(`🔍 Códigos detectados:`);
+    console.log(`   - Patrón "030": ${todosLosCodigos.filter(c => c.tipo === '030').length}`);
+    console.log(`   - Patrón "005": ${todosLosCodigos.filter(c => c.tipo === '005').length}`);
+    console.log(`   TOTAL: ${todosLosCodigos.length}`);
+    console.log('');
+    
+    // Procesar cada código encontrado
+    for (const {codigo, posicion, tipo} of todosLosCodigos) {
+        if (productosYaAgregados.has(codigo)) {
+            continue;
+        }
+        
+        productosDetectados++;
+        
+        // Extraer contexto SOLO hacia adelante (150 caracteres)
+        const contexto = texto.substring(posicion, Math.min(texto.length, posicion + 150));
+        let cantidad = 0;
+        
+        if (tipo === '030') {
+            // Para 030: buscar patrón "Bto Cont. U/M"
+            // Después de encontrar U/M, retroceder 2 posiciones para Bto
+            const matchBto = contexto.match(/(\d+)\s+\d+[\.,]?\d*\s+(GR|CM3|KGR?|LTS?|CU)\b/i);
+            if (matchBto) {
+                cantidad = parseInt(matchBto[1]);
+                console.log(`   [030] ${codigo} → Bto: ${cantidad}`);
             }
+        } else if (tipo === '005') {
+            // Para 005 (BEBIDAS): buscar "CM3" seguido de cantidad con formato X.XX
+            const matchCant = contexto.match(/CM3\s+([\d]+[\.,]?\d*)/i);
+            if (matchCant) {
+                const valorStr = matchCant[1].replace(',', '.');
+                cantidad = Math.floor(parseFloat(valorStr));
+                console.log(`   [005] ${codigo} → CM3 → "${matchCant[1]}" → Cant: ${cantidad}`);
+            }
+        }
+
+        // Buscar producto en la base de datos
+        const producto = productos.find(p => p.codigo === codigo);
+        
+        if (producto) {
+            productosYaAgregados.add(codigo);
+            proveedoresEncontrados.add(producto.proveedor);
+            
+            productosEncontrados.push({
+                ...producto,
+                pedido: cantidad,
+                recibido: 0
+            });
+            console.log(`✅ [${tipo}] ${codigo} → Cant: ${cantidad} → ${producto.descripcion.substring(0,30)}...`);
+        } else {
+            codigosNoEncontrados.push(codigo);
+            console.log(`❌ [${tipo}] ${codigo} → Cant: ${cantidad} → NO EN BD`);
         }
     }
 
