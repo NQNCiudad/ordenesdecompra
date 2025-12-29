@@ -1171,40 +1171,51 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                             }
                         }
                     } else if (tipo === '005') {
-                        // Para códigos 005: Buscar U/M y AVANZAR 1 posición para Cant.
-                        for (let j = 0; j < partes.length; j++) {
-                            if (partes[j].match(/^(GR|CM3|KGR?|LTS?|CU)$/i)) {
-                                if (j + 1 < partes.length) {
-                                    const valorCant = partes[j + 1];
-                                    const num = parseFloat(valorCant);
-                                    
-                                    if (!isNaN(num) && num > 0 && num < 10000) {
-                                        cantidad = Math.floor(num); // Redondear hacia abajo
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Buscar producto SOLO por código
-                    const producto = productos.find(p => p.codigo === codigo);
+    // Para códigos 005: BÚSQUEDA FLEXIBLE en las siguientes 5 posiciones después de U/M
+    for (let j = 0; j < partes.length; j++) {
+        if (partes[j].match(/^(GR|CM3|KGR?|LTS?|CU)$/i)) {
+            // Buscar en las siguientes 5 posiciones
+            for (let offset = 1; offset <= 5; offset++) {
+                if (j + offset < partes.length) {
+                    const valorCant = partes[j + offset];
+                    // Limpiar el valor de caracteres no numéricos excepto punto y coma
+                    const valorLimpio = valorCant.replace(/[^\d.,]/g, '').replace(',', '.');
+                    const num = parseFloat(valorLimpio);
                     
-                    if (producto) {
-                        productosYaAgregados.add(codigo);
-                        proveedoresEncontrados.add(producto.proveedor);
-                        
-                        productosEncontrados.push({
-                            ...producto,
-                            pedido: cantidad,
-                            recibido: 0
-                        });
-                        console.log(`✅ [${tipo} ${codigo}] ${tipo === '030' ? 'Bto' : 'Cant'}:${cantidad} → ${producto.descripcion.substring(0,30)}...`);
-                    } else {
-                        codigosNoEncontrados.push(codigo);
-                        console.log(`❌ [${tipo} ${codigo}] ${tipo === '030' ? 'Bto' : 'Cant'}:${cantidad} → NO EN BD`);
+                    if (!isNaN(num) && num > 0 && num < 10000) {
+                        cantidad = Math.floor(num);
+                        console.log(`   🔍 [005] Código ${codigo} → Encontrado en U/M+${offset}: "${valorCant}" = ${cantidad}`);
+                        break;
                     }
                 }
+            }
+            if (cantidad > 0) break;
+        }
+    }
+    
+    // Si no se encontró con U/M, intentar buscar un número válido cerca del código
+    if (cantidad === 0) {
+        for (let j = 0; j < partes.length; j++) {
+            if (partes[j] === codigo) {
+                // Buscar en las siguientes 10 posiciones
+                for (let offset = 1; offset <= 10; offset++) {
+                    if (j + offset < partes.length) {
+                        const valorCant = partes[j + offset];
+                        const valorLimpio = valorCant.replace(/[^\d.,]/g, '').replace(',', '.');
+                        const num = parseFloat(valorLimpio);
+                        
+                        if (!isNaN(num) && num > 0 && num < 10000) {
+                            cantidad = Math.floor(num);
+                            console.log(`   🔍 [005] Código ${codigo} → Cant en pos +${offset} desde código: "${valorCant}" = ${cantidad}`);
+                            break;
+                        }
+                    }
+                }
+                if (cantidad > 0) break;
+            }
+        }
+    }
+}
 
                 // Determinar el proveedor basado en los productos encontrados
                 const proveedoresArray = Array.from(proveedoresEncontrados);
