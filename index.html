@@ -1002,7 +1002,7 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
 
         const productos = parseProductos();
         const proveedores = ['QUILMES', 'CCU', 'COCA COLA', 'DANONE-MASTELLONE'];
-        const sucursales = ['006', '068', '162', '225', '226', '229', '232', '233', '235', '236', '237', '239', '240', '248', '254'];
+        const sucursales = ['006', '068', '162', '225', '226', '229', '232', '233', '235', '236', '237', '239', '240', '248'];
 
         function App() {
             const [proveedor, setProveedor] = useState(() => {
@@ -1025,6 +1025,12 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
             const [mostrarModalPDF, setMostrarModalPDF] = useState(false);
             const [productosPDF, setProductosPDF] = useState([]);
             const [nroOrdenPDF, setNroOrdenPDF] = useState('');
+            
+            // NUEVO: Estados para PDF de recepción
+            const [cargandoPDFRecepcion, setCargandoPDFRecepcion] = useState(false);
+            const [errorPDFRecepcion, setErrorPDFRecepcion] = useState('');
+            const [mostrarModalRecepcion, setMostrarModalRecepcion] = useState(false);
+            const [recepcionPDF, setRecepcionPDF] = useState([]);
 
             useEffect(() => {
                 localStorage.setItem('proveedor', proveedor);
@@ -1292,6 +1298,97 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                 setNroOrdenPDF('');
             };
 
+            // NUEVO: Manejar carga de PDF de recepción
+            const handleCargarPDFRecepcion = async (event) => {
+                const file = event.target.files[0];
+                if (!file || file.type !== 'application/pdf') {
+                    setErrorPDFRecepcion('Por favor seleccione un archivo PDF válido');
+                    return;
+                }
+
+                if (productosSeleccionados.length === 0) {
+                    setErrorPDFRecepcion('Primero debe cargar una orden de compra');
+                    return;
+                }
+
+                setCargandoPDFRecepcion(true);
+                setErrorPDFRecepcion('');
+
+                try {
+                    const texto = await extractTextFromPDF(file);
+                    const resultado = parsearPDF(texto);
+
+                    if (resultado.productos.length === 0) {
+                        setErrorPDFRecepcion('No se encontraron productos en el PDF de recepción');
+                        setCargandoPDFRecepcion(false);
+                        return;
+                    }
+
+                    // Hacer match con productos existentes
+                    const productosConMatch = [];
+                    const productosSinMatch = [];
+                    
+                    resultado.productos.forEach(prodRecepcion => {
+                        const productoExistente = productosSeleccionados.find(p => 
+                            p.codigo === prodRecepcion.codigo && 
+                            (p.nroOrden === prodRecepcion.nroOrden || !prodRecepcion.nroOrden)
+                        );
+                        
+                        if (productoExistente) {
+                            productosConMatch.push({
+                                ...prodRecepcion,
+                                pedidoOriginal: productoExistente.pedido,
+                                nroOrdenOriginal: productoExistente.nroOrden
+                            });
+                        } else {
+                            productosSinMatch.push(prodRecepcion);
+                        }
+                    });
+
+                    if (productosConMatch.length === 0) {
+                        setErrorPDFRecepcion('No se encontraron coincidencias con los productos de la orden');
+                        setCargandoPDFRecepcion(false);
+                        return;
+                    }
+
+                    setRecepcionPDF(productosConMatch);
+                    setMostrarModalRecepcion(true);
+
+                } catch (error) {
+                    console.error('Error al procesar PDF de recepción:', error);
+                    setErrorPDFRecepcion('Error al procesar el PDF: ' + error.message);
+                } finally {
+                    setCargandoPDFRecepcion(false);
+                    event.target.value = '';
+                }
+            };
+
+            const confirmarRecepcionPDF = () => {
+                let actualizados = 0;
+                
+                setProductosSeleccionados(productosSeleccionados.map(p => {
+                    const recepcion = recepcionPDF.find(r => 
+                        r.codigo === p.codigo && r.nroOrdenOriginal === p.nroOrden
+                    );
+                    
+                    if (recepcion) {
+                        actualizados++;
+                        return { ...p, recibido: recepcion.pedido }; // El "pedido" del PDF de recepción es la cantidad recibida
+                    }
+                    return p;
+                }));
+                
+                setMostrarModalRecepcion(false);
+                setRecepcionPDF([]);
+                setMensajeGuardado(`✅ ${actualizados} productos actualizados con recepción`);
+                setTimeout(() => setMensajeGuardado(''), 3000);
+            };
+
+            const cancelarRecepcionPDF = () => {
+                setMostrarModalRecepcion(false);
+                setRecepcionPDF([]);
+            };
+
             const productosFiltrados = productos.filter(p => 
                 p.proveedor === proveedor && 
                 (p.descripcion.toLowerCase().includes(busqueda.toLowerCase()) || 
@@ -1498,6 +1595,73 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                             </div>
                         )}
 
+                        {mostrarModalRecepcion && (
+                            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                                <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+                                    <div className="p-6 border-b bg-green-50">
+                                        <h2 className="text-2xl font-bold text-green-800">📦 Confirmar Recepción</h2>
+                                        <p className="text-gray-600 mt-2">
+                                            Se encontraron <strong>{recepcionPDF.length} productos recibidos</strong> que coinciden con la orden
+                                        </p>
+                                        <p className="text-green-600 mt-2 text-sm">
+                                            ✅ Las cantidades recibidas se actualizarán automáticamente
+                                        </p>
+                                    </div>
+                                    
+                                    <div className="p-6 overflow-y-auto flex-1">
+                                        <table className="w-full text-sm">
+                                            <thead>
+                                                <tr className="bg-gray-100">
+                                                    <th className="p-2 text-left">Código</th>
+                                                    <th className="p-2 text-left">Descripción</th>
+                                                    <th className="p-2 text-center">Pedido</th>
+                                                    <th className="p-2 text-center">Recibido</th>
+                                                    <th className="p-2 text-center">Estado</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {recepcionPDF.map((p, i) => {
+                                                    const dif = p.pedido - p.pedidoOriginal;
+                                                    return (
+                                                        <tr key={i} className="border-b">
+                                                            <td className="p-2">{p.codigo}</td>
+                                                            <td className="p-2">{p.descripcion}</td>
+                                                            <td className="p-2 text-center">{p.pedidoOriginal}</td>
+                                                            <td className="p-2 text-center font-bold text-green-600">{p.pedido}</td>
+                                                            <td className="p-2 text-center">
+                                                                {dif === 0 ? (
+                                                                    <span className="text-green-600">✅ Completo</span>
+                                                                ) : dif > 0 ? (
+                                                                    <span className="text-blue-600">📦 +{dif}</span>
+                                                                ) : (
+                                                                    <span className="text-red-600">❌ {dif}</span>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    
+                                    <div className="p-6 border-t flex justify-end space-x-3">
+                                        <button 
+                                            onClick={cancelarRecepcionPDF}
+                                            className="px-6 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600"
+                                        >
+                                            Cancelar
+                                        </button>
+                                        <button 
+                                            onClick={confirmarRecepcionPDF}
+                                            className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                                        >
+                                            ✅ Actualizar Recepción
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
                             <div className="flex justify-between items-center mb-4">
                                 <h1 className="text-3xl font-bold text-indigo-600">Control de Órdenes de Compra</h1>
@@ -1543,6 +1707,46 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                                     </div>
                                 )}
                             </div>
+
+                            {productosSeleccionados.length > 0 && (
+                                <div className="mb-6 p-4 bg-green-50 border-2 border-green-200 rounded-lg">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div>
+                                            <h3 className="text-lg font-semibold text-green-800">
+                                                <i className="fas fa-box-open"></i> Cargar Recepción desde PDF
+                                            </h3>
+                                            <p className="text-sm text-green-600">Subir PDF con las cantidades recibidas para actualizar automáticamente</p>
+                                        </div>
+                                        <label className="cursor-pointer">
+                                            <input
+                                                type="file"
+                                                accept=".pdf"
+                                                onChange={handleCargarPDFRecepcion}
+                                                className="hidden"
+                                                disabled={cargandoPDFRecepcion}
+                                            />
+                                            <div className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center space-x-2">
+                                                {cargandoPDFRecepcion ? (
+                                                    <>
+                                                        <i className="fas fa-spinner fa-spin"></i>
+                                                        <span>Procesando...</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <i className="fas fa-box-open"></i>
+                                                        <span>Cargar Recepción</span>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </label>
+                                    </div>
+                                    {errorPDFRecepcion && (
+                                        <div className="mt-2 p-3 bg-red-100 border border-red-300 rounded text-red-700 text-sm">
+                                            <i className="fas fa-exclamation-circle"></i> {errorPDFRecepcion}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                             
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                                 <div>
