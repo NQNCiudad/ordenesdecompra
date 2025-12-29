@@ -1147,29 +1147,26 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                     }
                 }
             } else if (tipo === '005') {
-                // Para 005: buscar U/M, luego buscar el PRIMER número decimal después
-                for (let j = 0; j < partes.length; j++) {
-                    if (partes[j].match(/^(GR|CM3|KGR?|LTS?|CU)$/i)) {
-                        // Buscar el primer número válido después de U/M
-                        for (let offset = 1; offset <= 5; offset++) {
-                            if (j + offset < partes.length) {
-                                const valorCant = partes[j + offset];
-                                // Limpiar y convertir
-                                const valorLimpio = valorCant.replace(/[^\d.,]/g, '').replace(',', '.');
-                                const num = parseFloat(valorLimpio);
-                                
-                                // Solo aceptar si es un número razonable y NO es muy grande (descarta costos)
-                                if (!isNaN(num) && num > 0 && num <= 1000) {
-                                    cantidad = Math.floor(num);
-                                    console.log(`   [005] ${codigo} → U/M="${partes[j]}" +${offset}pos → "${valorCant}" = ${cantidad}`);
-                                    break;
-                                }
-                            }
-                        }
-                        if (cantidad > 0) break;
-                    }
+    // Para 005 (BEBIDAS): buscar específicamente CM3
+    for (let j = 0; j < partes.length; j++) {
+        if (partes[j].match(/^CM3$/i)) {
+            // Tomar el número que viene INMEDIATAMENTE después de CM3
+            if (j + 1 < partes.length) {
+                const valorCant = partes[j + 1];
+                // Limpiar y convertir (formato: 5.00, 20.00, etc.)
+                const valorLimpio = valorCant.replace(/[^\d.,]/g, '').replace(',', '.');
+                const num = parseFloat(valorLimpio);
+                
+                if (!isNaN(num) && num > 0) {
+                    cantidad = Math.floor(num); // Parte entera
+                    console.log(`   [005-BEBIDA] ${codigo} → CM3 → "${valorCant}" → Cant: ${cantidad}`);
+                    break;
                 }
             }
+            break;
+        }
+    }
+}
 
             // Buscar producto en la base de datos
             const producto = productos.find(p => p.codigo === codigo);
