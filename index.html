@@ -3,30 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Control de Órdenes de Compra</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>Control de Órdenes de Compra - SAIEP</title>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <style>
-        @keyframes gradient {
-            0% {
-                background-position: 0% 50%;
-            }
-            50% {
-                background-position: 100% 50%;
-            }
-            100% {
-                background-position: 0% 50%;
-            }
-        }
-    </style>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div id="app"></div>
+
     <script type="text/babel">
         const { useState, useEffect } = React;
 
-        // Configurar PDF.js
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
         const productosData = `QUILMES|0028861|GASEOSA NARANJA LATA|MIRINDA|24|354|CM3
@@ -1012,7 +1002,7 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
 
         const productos = parseProductos();
         const proveedores = ['QUILMES', 'CCU', 'COCA COLA', 'DANONE-MASTELLONE'];
-        const sucursales = ['006', '068', '162', '225', '226', '229', '232', '233', '235', '236', '237', '239', '240', '248'];
+        const sucursales = ['006', '068', '162', '225', '226', '229', '232', '233', '235', '236', '237', '239', '240', '248', '254'];
 
         function App() {
             const [proveedor, setProveedor] = useState(() => {
@@ -1327,14 +1317,16 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                 }]);
             };
 
-            const actualizarCantidad = (index, campo, valor) => {
-                setProductosSeleccionados(productosSeleccionados.map((p, i) => 
-                    i === index ? { ...p, [campo]: parseInt(valor) || 0 } : p
+            const actualizarCantidad = (codigo, nroOrden, campo, valor) => {
+                setProductosSeleccionados(productosSeleccionados.map(p => 
+                    (p.codigo === codigo && p.nroOrden === nroOrden) ? { ...p, [campo]: parseInt(valor) || 0 } : p
                 ));
             };
 
-            const eliminarProducto = (index) => {
-                setProductosSeleccionados(productosSeleccionados.filter((p, i) => i !== index));
+            const eliminarProducto = (codigo, nroOrden) => {
+                setProductosSeleccionados(productosSeleccionados.filter(p => 
+                    !(p.codigo === codigo && p.nroOrden === nroOrden)
+                ));
             };
 
             const calcularDiferencia = (pedido, recibido) => recibido - pedido;
@@ -1434,10 +1426,10 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
             };
 
             // Agrupar productos por N° de Orden para visualización
-            const productosAgrupados = productosSeleccionados.reduce((acc, p, index) => {
+            const productosAgrupados = productosSeleccionados.reduce((acc, p) => {
                 const orden = p.nroOrden || 'MANUAL';
                 if (!acc[orden]) acc[orden] = [];
-                acc[orden].push({ ...p, index });
+                acc[orden].push(p);
                 return acc;
             }, {});
 
@@ -1659,12 +1651,13 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    {productosAgrupados[orden].map(({ index, ...p }) => {
+                                                    {productosAgrupados[orden].map((p) => {
                                                         const dif = calcularDiferencia(p.pedido, p.recibido);
                                                         const pct = calcularPorcentaje(p.pedido, p.recibido);
                                                         const completo = dif >= 0 && pct >= 100;
+                                                        const uniqueKey = p.codigo + '-' + (p.nroOrden || 'manual');
                                                         return (
-                                                            <tr key={index} className={'border-b ' + (completo ? 'bg-green-50' : 'bg-red-50')}>
+                                                            <tr key={uniqueKey} className={'border-b ' + (completo ? 'bg-green-50' : 'bg-red-50')}>
                                                                 <td className="p-2">{p.codigo}</td>
                                                                 <td className="p-2">{p.descripcion}</td>
                                                                 <td className="p-2">{p.marca}</td>
@@ -1674,7 +1667,7 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                                                                         type="number" 
                                                                         className="w-20 p-1 border rounded text-center"
                                                                         value={p.pedido}
-                                                                        onChange={(e) => actualizarCantidad(index, 'pedido', e.target.value)}
+                                                                        onChange={(e) => actualizarCantidad(p.codigo, p.nroOrden, 'pedido', e.target.value)}
                                                                     />
                                                                 </td>
                                                                 <td className="p-2">
@@ -1682,7 +1675,7 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                                                                         type="number" 
                                                                         className="w-20 p-1 border rounded text-center"
                                                                         value={p.recibido}
-                                                                        onChange={(e) => actualizarCantidad(index, 'recibido', e.target.value)}
+                                                                        onChange={(e) => actualizarCantidad(p.codigo, p.nroOrden, 'recibido', e.target.value)}
                                                                     />
                                                                 </td>
                                                                 <td className={'p-2 text-center font-bold ' + (dif > 0 ? 'text-green-600' : dif < 0 ? 'text-red-600' : 'text-gray-600')}>
@@ -1696,7 +1689,7 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                                                                 <td className="p-2 text-center font-bold">{pct}%</td>
                                                                 <td className="p-2 text-center">
                                                                     <button 
-                                                                        onClick={() => eliminarProducto(index)}
+                                                                        onClick={() => eliminarProducto(p.codigo, p.nroOrden)}
                                                                         className="text-red-600 hover:text-red-800"
                                                                     >
                                                                         ❌
