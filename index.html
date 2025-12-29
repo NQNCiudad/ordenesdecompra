@@ -1448,7 +1448,7 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                 // Tabla con 10 columnas (agregamos N° Orden)
                 html += '<table>';
                 html += '<tr><th colspan="10" class="header">Control de Órdenes de Compra</th></tr>';
-                html += '<tr><td colspan="10">Proveedor: ' + proveedor + ' | Sucursal/Deposito: ' + sucursal + '</td></tr>';
+                html += '<tr><td colspan="10">Proveedor: ' + proveedor + ' | Sucursal: ' + sucursal + '</td></tr>';
                 html += '<tr class="header">';
                 html += '<th>N° Orden</th>';
                 html += '<th>Código</th>';
@@ -1833,7 +1833,7 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                                         value={sucursal}
                                         onChange={(e) => setSucursal(e.target.value)}
                                     >
-                                        <option value="">Seleccione sucursal</option>
+                                        <option value="">Seleccione Sucursal/Depósito</option>
                                         {sucursales.map(s => <option key={s} value={s}>{s}</option>)}
                                     </select>
                                 </div>
