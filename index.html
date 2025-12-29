@@ -1315,7 +1315,30 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
             };
 
             const exportarExcel = () => {
-                let html = '<html><head><meta charset="UTF-8"><style>.header{background-color:#4F46E5;color:white;font-weight:bold;text-align:center}.completo{background-color:#D1FAE5;color:#065F46;font-weight:bold}.faltante{background-color:#FEE2E2;color:#991B1B;font-weight:bold}.total{background-color:#1F2937;color:white;font-weight:bold}td{border:1px solid #E5E7EB;padding:8px}table{border-collapse:collapse;width:100%}</style></head><body><table><tr><td colspan="9" class="header">Control de Órdenes de Compra</td></tr><tr><td colspan="9">Proveedor: ' + proveedor + ' | Sucursal: ' + sucursal + '</td></tr><tr class="header"><td>Código</td><td>Descripción</td><td>Marca</td><td>Bulto</td><td>Pedido</td><td>Recibido</td><td>Diferencia</td><td>Estado</td><td>%</td></tr>';
+                let html = '<html><head><meta charset="UTF-8"><style>' +
+    'table{border-collapse:collapse;width:auto !important;}' +
+    'col{width:auto;}' +
+    '.header{background-color:#4F46E5;color:white;font-weight:bold;text-align:center}' +
+    '.completo{background-color:#D1FAE5;color:#065F46;font-weight:bold}' +
+    '.faltante{background-color:#FEE2E2;color:#991B1B;font-weight:bold}' +
+    '.total{background-color:#1F2937;color:white;font-weight:bold}' +
+    'td{border:1px solid #E5E7EB;padding:8px}' +
+    '</style></head><body>' +
+    '<table>' +
+    '<colgroup>' +
+    '<col style="width:100px">' +  // Código
+    '<col style="width:300px">' +  // Descripción
+    '<col style="width:150px">' +  // Marca
+    '<col style="width:80px">' +   // Bulto
+    '<col style="width:80px">' +   // Pedido
+    '<col style="width:80px">' +   // Recibido
+    '<col style="width:100px">' +  // Diferencia
+    '<col style="width:100px">' +  // Estado
+    '<col style="width:80px">' +   // %
+    '</colgroup>' +
+    '<tr><td colspan="9" class="header">Control de Órdenes de Compra</td></tr>' +
+    '<tr><td colspan="9">Proveedor: ' + proveedor + ' | Sucursal: ' + sucursal + '</td></tr>' +
+    '<tr class="header"><td>Código</td><td>Descripción</td><td>Marca</td><td>Bulto</td><td>Pedido</td><td>Recibido</td><td>Diferencia</td><td>Estado</td><td>%</td></tr>';
 
                 productosSeleccionados.forEach(p => {
                     const dif = calcularDiferencia(p.pedido, p.recibido);
