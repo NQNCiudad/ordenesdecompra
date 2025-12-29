@@ -1083,7 +1083,10 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
             };
 
     const parsearPDF = (texto) => {
-    const lineas = texto.split('\n');
+    // Dividir por saltos de línea y también por múltiples espacios
+const lineas = texto.split(/\n+/);
+console.log('📄 Total líneas detectadas:', lineas.length);
+console.log('📄 Primeras 10 líneas:', lineas.slice(0, 10));
     const productosEncontrados = [];
     const productosYaAgregados = new Set();
     let proveedorDetectado = '';
@@ -1147,23 +1150,27 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                     }
                 }
             } else if (tipo === '005') {
-    // Para 005 (BEBIDAS): buscar específicamente CM3
+    // Para códigos 005: Buscar U/M primero, luego la cantidad que sigue
     for (let j = 0; j < partes.length; j++) {
-        if (partes[j].match(/^CM3$/i)) {
-            // Tomar el número que viene INMEDIATAMENTE después de CM3
-            if (j + 1 < partes.length) {
-                const valorCant = partes[j + 1];
-                // Limpiar y convertir (formato: 5.00, 20.00, etc.)
-                const valorLimpio = valorCant.replace(/[^\d.,]/g, '').replace(',', '.');
-                const num = parseFloat(valorLimpio);
-                
-                if (!isNaN(num) && num > 0) {
-                    cantidad = Math.floor(num); // Parte entera
-                    console.log(`   [005-BEBIDA] ${codigo} → CM3 → "${valorCant}" → Cant: ${cantidad}`);
-                    break;
+        // Buscar la unidad de medida (U/M)
+        if (partes[j].match(/^(GR|CM3|KGR?|LTS?|CU)$/i)) {
+            // La cantidad está DESPUÉS de la U/M
+            // Buscar en las siguientes 3 posiciones
+            for (let offset = 1; offset <= 3; offset++) {
+                if (j + offset < partes.length) {
+                    const valorCant = partes[j + offset];
+                    const valorLimpio = valorCant.replace(/[^\d.,]/g, '').replace(',', '.');
+                    const num = parseFloat(valorLimpio);
+                    
+                    // Debe ser un número razonable para cantidad
+                    if (!isNaN(num) && num > 0 && num < 10000) {
+                        cantidad = Math.floor(num);
+                        console.log(`   🔍 [005] ${codigo} → U/M="${partes[j]}" + ${offset} pos = "${valorCant}" → Cant: ${cantidad}`);
+                        break;
+                    }
                 }
             }
-            break;
+            if (cantidad > 0) break;
         }
     }
 }
