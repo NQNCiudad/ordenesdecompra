@@ -1315,53 +1315,78 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
             };
 
             const exportarExcel = () => {
-                let html = '<html><head><meta charset="UTF-8"><style>' +
-    'table{border-collapse:collapse;width:auto !important;}' +
-    'col{width:auto;}' +
-    '.header{background-color:#4F46E5;color:white;font-weight:bold;text-align:center}' +
-    '.completo{background-color:#D1FAE5;color:#065F46;font-weight:bold}' +
-    '.faltante{background-color:#FEE2E2;color:#991B1B;font-weight:bold}' +
-    '.total{background-color:#1F2937;color:white;font-weight:bold}' +
-    'td{border:1px solid #E5E7EB;padding:8px}' +
-    '</style></head><body>' +
-    '<table>' +
-    '<colgroup>' +
-    '<col style="width:100px">' +  // Código
-    '<col style="width:300px">' +  // Descripción
-    '<col style="width:150px">' +  // Marca
-    '<col style="width:80px">' +   // Bulto
-    '<col style="width:80px">' +   // Pedido
-    '<col style="width:80px">' +   // Recibido
-    '<col style="width:100px">' +  // Diferencia
-    '<col style="width:100px">' +  // Estado
-    '<col style="width:80px">' +   // %
-    '</colgroup>' +
-    '<tr><td colspan="9" class="header">Control de Órdenes de Compra</td></tr>' +
-    '<tr><td colspan="9">Proveedor: ' + proveedor + ' | Sucursal: ' + sucursal + '</td></tr>' +
-    '<tr class="header"><td>Código</td><td>Descripción</td><td>Marca</td><td>Bulto</td><td>Pedido</td><td>Recibido</td><td>Diferencia</td><td>Estado</td><td>%</td></tr>';
+    // Crear tabla HTML limpia
+    let html = '<!DOCTYPE html><html><head><meta charset="UTF-8">';
+    html += '<style>';
+    html += 'table { border-collapse: collapse; }';
+    html += 'td, th { border: 1px solid #E5E7EB; padding: 8px; }';
+    html += '.header { background-color: #4F46E5; color: white; font-weight: bold; text-align: center; }';
+    html += '.completo { background-color: #D1FAE5; color: #065F46; font-weight: bold; }';
+    html += '.faltante { background-color: #FEE2E2; color: #991B1B; font-weight: bold; }';
+    html += '.total { background-color: #1F2937; color: white; font-weight: bold; }';
+    html += '</style></head><body>';
+    
+    // Tabla con 9 columnas exactas
+    html += '<table>';
+    html += '<tr><th colspan="9" class="header">Control de Órdenes de Compra</th></tr>';
+    html += '<tr><td colspan="9">Proveedor: ' + proveedor + ' | Sucursal: ' + sucursal + '</td></tr>';
+    html += '<tr class="header">';
+    html += '<th>Código</th>';
+    html += '<th>Descripción</th>';
+    html += '<th>Marca</th>';
+    html += '<th>Bulto</th>';
+    html += '<th>Pedido</th>';
+    html += '<th>Recibido</th>';
+    html += '<th>Diferencia</th>';
+    html += '<th>Estado</th>';
+    html += '<th>%</th>';
+    html += '</tr>';
 
-                productosSeleccionados.forEach(p => {
-                    const dif = calcularDiferencia(p.pedido, p.recibido);
-                    const pct = calcularPorcentaje(p.pedido, p.recibido);
-                    const clase = dif >= 0 ? 'completo' : 'faltante';
-                    const estado = dif >= 0 ? 'Completo' : 'Faltante';
-                    html += '<tr class="' + clase + '"><td>' + p.codigo + '</td><td>' + p.descripcion + '</td><td>' + p.marca + '</td><td>' + p.bulto + '</td><td>' + p.pedido + '</td><td>' + p.recibido + '</td><td>' + (dif > 0 ? '+' : '') + dif + '</td><td>' + estado + '</td><td>' + pct + '%</td></tr>';
-                });
+    // Filas de productos
+    productosSeleccionados.forEach(p => {
+        const dif = calcularDiferencia(p.pedido, p.recibido);
+        const pct = calcularPorcentaje(p.pedido, p.recibido);
+        const clase = dif >= 0 ? 'completo' : 'faltante';
+        const estado = dif >= 0 ? 'Completo' : 'Faltante';
+        
+        html += '<tr class="' + clase + '">';
+        html += '<td>' + p.codigo + '</td>';
+        html += '<td>' + p.descripcion + '</td>';
+        html += '<td>' + p.marca + '</td>';
+        html += '<td>' + p.bulto + '</td>';
+        html += '<td>' + p.pedido + '</td>';
+        html += '<td>' + p.recibido + '</td>';
+        html += '<td>' + (dif > 0 ? '+' : '') + dif + '</td>';
+        html += '<td>' + estado + '</td>';
+        html += '<td>' + pct + '%</td>';
+        html += '</tr>';
+    });
 
-                const totalPedido = productosSeleccionados.reduce((sum, p) => sum + p.pedido, 0);
-                const totalRecibido = productosSeleccionados.reduce((sum, p) => sum + p.recibido, 0);
-                const totalDif = totalRecibido - totalPedido;
-                const cumplimientoGlobal = calcularPorcentaje(totalPedido, totalRecibido);
+    // Fila de totales
+    const totalPedido = productosSeleccionados.reduce((sum, p) => sum + p.pedido, 0);
+    const totalRecibido = productosSeleccionados.reduce((sum, p) => sum + p.recibido, 0);
+    const totalDif = totalRecibido - totalPedido;
+    const cumplimientoGlobal = calcularPorcentaje(totalPedido, totalRecibido);
 
-                html += '<tr class="total"><td colspan="4">TOTALES</td><td>' + totalPedido + '</td><td>' + totalRecibido + '</td><td>' + (totalDif > 0 ? '+' : '') + totalDif + '</td><td colspan="2">' + cumplimientoGlobal + '% Cumplimiento</td></tr></table></body></html>';
+    html += '<tr class="total">';
+    html += '<td colspan="4">TOTALES</td>';
+    html += '<td>' + totalPedido + '</td>';
+    html += '<td>' + totalRecibido + '</td>';
+    html += '<td>' + (totalDif > 0 ? '+' : '') + totalDif + '</td>';
+    html += '<td colspan="2">' + cumplimientoGlobal + '% Cumplimiento</td>';
+    html += '</tr>';
+    
+    html += '</table></body></html>';
 
-                const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'orden_' + proveedor + '_' + sucursal + '_' + new Date().toISOString().split('T')[0] + '.xls';
-                a.click();
-            };
+    // Crear blob y descargar
+    const blob = new Blob(['\ufeff' + html], { type: 'application/vnd.ms-excel;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'orden_' + proveedor + '_' + sucursal + '_' + new Date().toISOString().split('T')[0] + '.xls';
+    a.click();
+    URL.revokeObjectURL(url);
+};
 
             const limpiarOrden = () => {
                 if (confirm('¿Está seguro de limpiar toda la orden? Esto eliminará todos los datos guardados.')) {
