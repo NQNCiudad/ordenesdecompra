@@ -1083,174 +1083,192 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
             };
 
             const parsearPDF = (texto) => {
-                const lineas = texto.split('\n');
-                const productosEncontrados = [];
-                const productosYaAgregados = new Set();
-                let proveedorDetectado = '';
-                let sucursalDetectada = '';
+    const lineas = texto.split('\n');
+    const productosEncontrados = [];
+    const productosYaAgregados = new Set();
+    let proveedorDetectado = '';
+    let sucursalDetectada = '';
 
-                // Detectar sucursal
-                for (const linea of lineas) {
-                    const matchSucursal = linea.match(/\[(\d{3})\]/);
-                    if (matchSucursal && sucursales.includes(matchSucursal[1])) {
-                        sucursalDetectada = matchSucursal[1];
-                        break;
-                    }
-                }
-
-                console.log('============================================');
-                console.log('📄 ANÁLISIS DEL PDF');
-                console.log('============================================');
-                console.log('Sucursal detectada:', sucursalDetectada);
-                console.log('Total líneas:', lineas.length);
-                console.log('Modo: Búsqueda por CÓDIGO (030 y 005)');
-                console.log('');
-
-                let productosDetectados = 0;
-                const proveedoresEncontrados = new Set();
-                const codigosNoEncontrados = [];
-                
-                // BÚSQUEDA CON DOS PATRONES: "030" y "005"
-                // Los patrones ahora ignoran asteriscos (*) que puedan venir antes
-                const todosLosCodigos = [];
-                let match;
-                
-                // Patrón 1: "030 XXXXXXX" (7 dígitos) - puede tener * adelante
-                const regex030 = /(?:^|\s)\*?\s*030\s+(\d{7})\b/gm;
-                while ((match = regex030.exec(texto)) !== null) {
-                    todosLosCodigos.push({
-                        codigo: match[1],
-                        posicion: match.index,
-                        tipo: '030'
-                    });
-                }
-                
-                // Patrón 2: "005 XXXXXXX" (7 dígitos) - puede tener * adelante
-                const regex005 = /(?:^|\s)\*?\s*005\s+(\d{7})\b/gm;
-                while ((match = regex005.exec(texto)) !== null) {
-                    todosLosCodigos.push({
-                        codigo: match[1],
-                        posicion: match.index,
-                        tipo: '005'
-                    });
-                }
-                
-                console.log(`🔍 Códigos detectados:`);
-                console.log(`   - Patrón "030": ${todosLosCodigos.filter(c => c.tipo === '030').length}`);
-                console.log(`   - Patrón "005": ${todosLosCodigos.filter(c => c.tipo === '005').length}`);
-                console.log(`   TOTAL: ${todosLosCodigos.length}`);
-                console.log('');
-                
-                // Procesar cada código encontrado
-                for (const {codigo, posicion, tipo} of todosLosCodigos) {
-                    if (productosYaAgregados.has(codigo)) {
-                        continue;
-                    }
-                    
-                    productosDetectados++;
-                    
-                    // Extraer contexto alrededor del código para buscar Bto o Cant
-                    const contexto = texto.substring(Math.max(0, posicion - 50), Math.min(texto.length, posicion + 200));
-                    let cantidad = 0;
-                    
-                    const partes = contexto.split(/\s+/);
-                    
-                    if (tipo === '030') {
-                        // Para códigos 030: Buscar U/M y retroceder 2 posiciones para Bto
-                        for (let j = 0; j < partes.length; j++) {
-                            if (partes[j].match(/^(GR|CM3|KGR?|LTS?|CU)$/i)) {
-                                if (j >= 2) {
-                                    const valorBto = partes[j - 2];
-                                    const num = parseInt(valorBto);
-                                    
-                                    if (!isNaN(num) && num > 0 && num < 10000) {
-                                        cantidad = num;
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    } else if (tipo === '005') {
-    // Para códigos 005: BÚSQUEDA FLEXIBLE en las siguientes 5 posiciones después de U/M
-    for (let j = 0; j < partes.length; j++) {
-        if (partes[j].match(/^(GR|CM3|KGR?|LTS?|CU)$/i)) {
-            // Buscar en las siguientes 5 posiciones
-            for (let offset = 1; offset <= 5; offset++) {
-                if (j + offset < partes.length) {
-                    const valorCant = partes[j + offset];
-                    // Limpiar el valor de caracteres no numéricos excepto punto y coma
-                    const valorLimpio = valorCant.replace(/[^\d.,]/g, '').replace(',', '.');
-                    const num = parseFloat(valorLimpio);
-                    
-                    if (!isNaN(num) && num > 0 && num < 10000) {
-                        cantidad = Math.floor(num);
-                        console.log(`   🔍 [005] Código ${codigo} → Encontrado en U/M+${offset}: "${valorCant}" = ${cantidad}`);
-                        break;
-                    }
-                }
-            }
-            if (cantidad > 0) break;
+    // Detectar sucursal
+    for (const linea of lineas) {
+        const matchSucursal = linea.match(/\[(\d{3})\]/);
+        if (matchSucursal && sucursales.includes(matchSucursal[1])) {
+            sucursalDetectada = matchSucursal[1];
+            break;
         }
     }
+
+    console.log('============================================');
+    console.log('📄 ANÁLISIS DEL PDF');
+    console.log('============================================');
+    console.log('Sucursal detectada:', sucursalDetectada);
+    console.log('Total líneas:', lineas.length);
+    console.log('Modo: Búsqueda por CÓDIGO (030 y 005)');
+    console.log('');
+
+    let productosDetectados = 0;
+    const proveedoresEncontrados = new Set();
+    const codigosNoEncontrados = [];
     
-    // Si no se encontró con U/M, intentar buscar un número válido cerca del código
-    if (cantidad === 0) {
-        for (let j = 0; j < partes.length; j++) {
-            if (partes[j] === codigo) {
-                // Buscar en las siguientes 10 posiciones
-                for (let offset = 1; offset <= 10; offset++) {
-                    if (j + offset < partes.length) {
-                        const valorCant = partes[j + offset];
-                        const valorLimpio = valorCant.replace(/[^\d.,]/g, '').replace(',', '.');
-                        const num = parseFloat(valorLimpio);
+    // BÚSQUEDA CON DOS PATRONES: "030" y "005"
+    const todosLosCodigos = [];
+    let match;
+    
+    // Patrón 1: "030 XXXXXXX" (7 dígitos) - puede tener * adelante
+    const regex030 = /(?:^|\s)\*?\s*030\s+(\d{7})\b/gm;
+    while ((match = regex030.exec(texto)) !== null) {
+        todosLosCodigos.push({
+            codigo: match[1],
+            posicion: match.index,
+            tipo: '030'
+        });
+    }
+    
+    // Patrón 2: "005 XXXXXXX" (7 dígitos) - puede tener * adelante
+    const regex005 = /(?:^|\s)\*?\s*005\s+(\d{7})\b/gm;
+    while ((match = regex005.exec(texto)) !== null) {
+        todosLosCodigos.push({
+            codigo: match[1],
+            posicion: match.index,
+            tipo: '005'
+        });
+    }
+    
+    console.log(`🔍 Códigos detectados:`);
+    console.log(`   - Patrón "030": ${todosLosCodigos.filter(c => c.tipo === '030').length}`);
+    console.log(`   - Patrón "005": ${todosLosCodigos.filter(c => c.tipo === '005').length}`);
+    console.log(`   TOTAL: ${todosLosCodigos.length}`);
+    console.log('');
+    
+    // Procesar cada código encontrado
+    for (const {codigo, posicion, tipo} of todosLosCodigos) {
+        if (productosYaAgregados.has(codigo)) {
+            continue;
+        }
+        
+        productosDetectados++;
+        
+        // Extraer contexto alrededor del código para buscar Bto o Cant
+        const contexto = texto.substring(Math.max(0, posicion - 50), Math.min(texto.length, posicion + 200));
+        let cantidad = 0;
+        
+        const partes = contexto.split(/\s+/);
+        
+        if (tipo === '030') {
+            // Para códigos 030: Buscar U/M y retroceder 2 posiciones para Bto
+            for (let j = 0; j < partes.length; j++) {
+                if (partes[j].match(/^(GR|CM3|KGR?|LTS?|CU)$/i)) {
+                    if (j >= 2) {
+                        const valorBto = partes[j - 2];
+                        const num = parseInt(valorBto);
                         
                         if (!isNaN(num) && num > 0 && num < 10000) {
-                            cantidad = Math.floor(num);
-                            console.log(`   🔍 [005] Código ${codigo} → Cant en pos +${offset} desde código: "${valorCant}" = ${cantidad}`);
+                            cantidad = num;
                             break;
                         }
                     }
                 }
-                if (cantidad > 0) break;
+            }
+        } else if (tipo === '005') {
+            // Para códigos 005: BÚSQUEDA FLEXIBLE en las siguientes 5 posiciones después de U/M
+            for (let j = 0; j < partes.length; j++) {
+                if (partes[j].match(/^(GR|CM3|KGR?|LTS?|CU)$/i)) {
+                    // Buscar en las siguientes 5 posiciones
+                    for (let offset = 1; offset <= 5; offset++) {
+                        if (j + offset < partes.length) {
+                            const valorCant = partes[j + offset];
+                            // Limpiar el valor de caracteres no numéricos excepto punto y coma
+                            const valorLimpio = valorCant.replace(/[^\d.,]/g, '').replace(',', '.');
+                            const num = parseFloat(valorLimpio);
+                            
+                            if (!isNaN(num) && num > 0 && num < 10000) {
+                                cantidad = Math.floor(num);
+                                console.log(`   🔍 [005] Código ${codigo} → Encontrado en U/M+${offset}: "${valorCant}" = ${cantidad}`);
+                                break;
+                            }
+                        }
+                    }
+                    if (cantidad > 0) break;
+                }
+            }
+            
+            // Si no se encontró con U/M, intentar buscar un número válido cerca del código
+            if (cantidad === 0) {
+                for (let j = 0; j < partes.length; j++) {
+                    if (partes[j] === codigo) {
+                        // Buscar en las siguientes 10 posiciones
+                        for (let offset = 1; offset <= 10; offset++) {
+                            if (j + offset < partes.length) {
+                                const valorCant = partes[j + offset];
+                                const valorLimpio = valorCant.replace(/[^\d.,]/g, '').replace(',', '.');
+                                const num = parseFloat(valorLimpio);
+                                
+                                if (!isNaN(num) && num > 0 && num < 10000) {
+                                    cantidad = Math.floor(num);
+                                    console.log(`   🔍 [005] Código ${codigo} → Cant en pos +${offset} desde código: "${valorCant}" = ${cantidad}`);
+                                    break;
+                                }
+                            }
+                        }
+                        if (cantidad > 0) break;
+                    }
+                }
             }
         }
+
+        // Buscar producto SOLO por código
+        const producto = productos.find(p => p.codigo === codigo);
+        
+        if (producto) {
+            productosYaAgregados.add(codigo);
+            proveedoresEncontrados.add(producto.proveedor);
+            
+            productosEncontrados.push({
+                ...producto,
+                pedido: cantidad,
+                recibido: 0
+            });
+            console.log(`✅ [${tipo} ${codigo}] ${tipo === '030' ? 'Bto' : 'Cant'}:${cantidad} → ${producto.descripcion.substring(0,30)}...`);
+        } else {
+            codigosNoEncontrados.push(codigo);
+            console.log(`❌ [${tipo} ${codigo}] ${tipo === '030' ? 'Bto' : 'Cant'}:${cantidad} → NO EN BD`);
+        }
     }
-}
 
-                // Determinar el proveedor basado en los productos encontrados
-                const proveedoresArray = Array.from(proveedoresEncontrados);
-                if (proveedoresArray.length === 1) {
-                    proveedorDetectado = proveedoresArray[0];
-                } else if (proveedoresArray.length > 1) {
-                    const conteo = {};
-                    productosEncontrados.forEach(p => {
-                        conteo[p.proveedor] = (conteo[p.proveedor] || 0) + 1;
-                    });
-                    proveedorDetectado = Object.keys(conteo).reduce((a, b) => 
-                        conteo[a] > conteo[b] ? a : b
-                    );
-                }
+    // Determinar el proveedor basado en los productos encontrados
+    const proveedoresArray = Array.from(proveedoresEncontrados);
+    if (proveedoresArray.length === 1) {
+        proveedorDetectado = proveedoresArray[0];
+    } else if (proveedoresArray.length > 1) {
+        const conteo = {};
+        productosEncontrados.forEach(p => {
+            conteo[p.proveedor] = (conteo[p.proveedor] || 0) + 1;
+        });
+        proveedorDetectado = Object.keys(conteo).reduce((a, b) => 
+            conteo[a] > conteo[b] ? a : b
+        );
+    }
 
-                console.log('');
-                console.log('============================================');
-                console.log('📊 RESUMEN');
-                console.log('============================================');
-                console.log('Códigos detectados:', productosDetectados);
-                console.log('✅ Encontrados en BD:', productosEncontrados.length);
-                console.log('❌ NO encontrados:', codigosNoEncontrados.length);
-                if (codigosNoEncontrados.length > 0 && codigosNoEncontrados.length < 20) {
-                    console.log('Códigos faltantes:', codigosNoEncontrados.join(', '));
-                }
-                console.log('Proveedores:', Array.from(proveedoresEncontrados).join(', '));
-                console.log('Proveedor principal:', proveedorDetectado);
-                console.log('============================================');
+    console.log('');
+    console.log('============================================');
+    console.log('📊 RESUMEN');
+    console.log('============================================');
+    console.log('Códigos detectados:', productosDetectados);
+    console.log('✅ Encontrados en BD:', productosEncontrados.length);
+    console.log('❌ NO encontrados:', codigosNoEncontrados.length);
+    if (codigosNoEncontrados.length > 0 && codigosNoEncontrados.length < 20) {
+        console.log('Códigos faltantes:', codigosNoEncontrados.join(', '));
+    }
+    console.log('Proveedores:', Array.from(proveedoresEncontrados).join(', '));
+    console.log('Proveedor principal:', proveedorDetectado);
+    console.log('============================================');
 
-                return {
-                    proveedor: proveedorDetectado,
-                    sucursal: sucursalDetectada,
-                    productos: productosEncontrados
-                };
-            };
+    return {
+        proveedor: proveedorDetectado,
+        sucursal: sucursalDetectada,
+        productos: productosEncontrados
+    };
+};
 
             const handleCargarPDF = async (event) => {
                 const file = event.target.files[0];
