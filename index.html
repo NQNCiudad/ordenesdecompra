@@ -1255,58 +1255,48 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
                         continue;
                     }
 
-                    // Extraer contexto hacia adelante (120 caracteres)
-                    const contexto = texto.substring(posicion, Math.min(texto.length, posicion + 120));
+                    // Extraer contexto hacia adelante (150 caracteres para asegurar que incluye el costo)
+                    const contexto = texto.substring(posicion, Math.min(texto.length, posicion + 150));
                     let cantidad = 0;
 
                     console.log(`\n🔍 [RECEP] Analizando código: ${codigo}`);
-                    console.log(`   Contexto: "${contexto.substring(0, 90)}"`);
+                    console.log(`   Contexto (120 chars): "${contexto.substring(0, 120)}"`);
 
-                    // Buscar U/M primero
+                    // PATRÓN BASADO EN ESTRUCTURA DE COLUMNAS DEL PDF
+                    // Estructura: ... Bto Cont U/M Cant Costo %Bon %Iva
+                    // Ejemplo: "... 1   159  GR  24   739.56  11.00 21.00"
+                    // Buscamos: U/M seguido de hasta 3 números, queremos el primero que sea < 1000
+                    
                     const matchUM = contexto.match(/\b(CU|GR|CM3|KGR?|LTS?)\b/i);
                     
                     if (matchUM) {
-                        console.log(`   ✓ U/M encontrado: ${matchUM[1]} en posición ${matchUM.index}`);
+                        console.log(`   ✓ U/M: ${matchUM[1]} en posición ${matchUM.index}`);
                         
-                        // Extraer texto después de U/M (siguientes 80 caracteres)
-                        const despuesUM = contexto.substring(matchUM.index + matchUM[0].length, matchUM.index + matchUM[0].length + 80);
-                        console.log(`   Después de U/M: "${despuesUM.substring(0, 50)}"`);
+                        // Extraer texto DESPUÉS de U/M
+                        const despuesUM = contexto.substring(matchUM.index + matchUM[0].length);
+                        console.log(`   Después U/M: "${despuesUM.substring(0, 60)}"`);
                         
-                        // Buscar TODOS los números enteros (no parte de decimales)
-                        const todosLosNumeros = [...despuesUM.matchAll(/\b(\d+)\b(?!\.\d)/g)];
-                        console.log(`   Números enteros encontrados: ${todosLosNumeros.map(m => m[1]).join(', ')}`);
+                        // Buscar el PRIMER número que NO sea parte de un decimal
+                        // y que sea razonable para una cantidad (1-999)
+                        // IMPORTANTE: (?!\d|\.) asegura que después NO viene dígito NI punto (evita 739 de 739.56)
+                        const matchCant = despuesUM.match(/\s+(\d{1,3})(?!\d|\.)/);
                         
-                        // Filtrar candidatos: 
-                        // - Entre 1 y 500 (para permitir cantidades grandes como 120, 180, 240)
-                        // - Excluir 11 y 21 (porcentajes de bonificación e IVA típicos)
-                        // - Excluir 0
-                        const numeros = todosLosNumeros.map(m => parseInt(m[1]));
-                        const candidatos = numeros.filter(n => n >= 1 && n <= 500 && n !== 11 && n !== 21 && n !== 0);
-                        
-                        console.log(`   Candidatos válidos (1-500, sin 0,11,21): ${candidatos.join(', ')}`);
-                        
-                        if (candidatos.length > 0) {
-                            // Si hay solo un candidato, tomarlo
-                            // Si hay varios, tomar el que NO sea 1 (evitar Bto), salvo que sea el único
-                            if (candidatos.length === 1) {
-                                cantidad = candidatos[0];
-                                console.log(`   ✅ Único candidato: ${cantidad}`);
+                        if (matchCant) {
+                            const num = parseInt(matchCant[1]);
+                            console.log(`   Primer número después de U/M: ${num}`);
+                            
+                            // Tomar el número si es razonable (1-999)
+                            if (num >= 1 && num <= 999) {
+                                cantidad = num;
+                                console.log(`✅ [RECEP] ${codigo} → ${matchUM[1]} ${cantidad}`);
                             } else {
-                                // Preferir números mayores a 1
-                                const mayoresA1 = candidatos.filter(n => n > 1);
-                                if (mayoresA1.length > 0) {
-                                    cantidad = mayoresA1[0];
-                                    console.log(`   ✅ Primer candidato > 1: ${cantidad}`);
-                                } else {
-                                    cantidad = candidatos[0];
-                                    console.log(`   ✅ Tomando el 1: ${cantidad}`);
-                                }
+                                console.log(`❌ [RECEP] ${codigo} → ${num} fuera de rango (1-999)`);
                             }
                         } else {
-                            console.log(`   ❌ No hay candidatos válidos`);
+                            console.log(`❌ [RECEP] ${codigo} → No se encontró número después de U/M`);
                         }
                     } else {
-                        console.log(`   ❌ No se encontró U/M en el contexto`);
+                        console.log(`❌ [RECEP] ${codigo} → No se encontró U/M`);
                     }
 
                     // Buscar producto en la base de datos
