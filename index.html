@@ -1002,7 +1002,7 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
 
         const productos = parseProductos();
         const proveedores = ['QUILMES', 'CCU', 'COCA COLA', 'DANONE-MASTELLONE'];
-        const sucursales = ['006', '068', '162', '225', '226', '229', '232', '233', '235', '236', '237', '239', '240', '248', '254'];
+        const sucursales = ['006', '068', '162', '225', '226', '229', '232', '233', '235', '236', '237', '239', '240', '248'];
 
         function App() {
             const [proveedor, setProveedor] = useState(() => {
@@ -1093,7 +1093,7 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
 
                 // NUEVO: Detectar número de orden
                 let nroOrden = '';
-                const matchOrden = texto.match(/(?:N[uú]mero|Nro\.Expedici[oó]n|Expedici[oó]n)[:.\s]*(\d+)/i);
+                const matchOrden = texto.match(/(?:N[uú]mero|Nro\.Expedici[oó]n|Expedici[oó]n|Nro\.Orden Compra)[:.\s]*(\d+)/i);
                 if (matchOrden) {
                     nroOrden = matchOrden[1];
                 }
@@ -1225,6 +1225,113 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                 };
             };
 
+            // NUEVA FUNCIÓN: Parsear PDF de RECEPCIÓN (sin códigos 005/030)
+            const parsearPDFRecepcion = (texto) => {
+                const productosEncontrados = [];
+                const productosYaAgregados = new Set();
+
+                // Detectar N° de Orden de Compra
+                let nroOrden = '';
+                const matchOrden = texto.match(/(?:Nro\.Orden Compra|Orden Compra|N\.?Orden)[:.\s]*(\d+)/i);
+                if (matchOrden) {
+                    nroOrden = matchOrden[1];
+                }
+
+                console.log('============================================');
+                console.log('📦 ANÁLISIS DE PDF DE RECEPCIÓN');
+                console.log('============================================');
+                console.log('N° Orden detectado:', nroOrden);
+                console.log('Caracteres totales:', texto.length);
+                console.log('');
+
+                // BUSCAR CÓDIGOS DE 7 DÍGITOS directamente (sin prefijo 005/030)
+                // Patrón: código de 7 dígitos seguido de descripción y cantidad
+                const regexCodigo = /\b(\d{7})\b/gm;
+                let match;
+                const codigosEncontrados = [];
+
+                while ((match = regexCodigo.exec(texto)) !== null) {
+                    const codigo = match[1];
+                    
+                    // Verificar que el código existe en nuestra base de datos
+                    const producto = productos.find(p => p.codigo === codigo);
+                    if (producto && !productosYaAgregados.has(codigo)) {
+                        codigosEncontrados.push({
+                            codigo: codigo,
+                            posicion: match.index
+                        });
+                    }
+                }
+
+                console.log(`🔍 Códigos de productos detectados: ${codigosEncontrados.length}`);
+                console.log('');
+
+                // Procesar cada código encontrado
+                for (const {codigo, posicion} of codigosEncontrados) {
+                    if (productosYaAgregados.has(codigo)) {
+                        continue;
+                    }
+
+                    // Extraer contexto hacia adelante (200 caracteres)
+                    const contexto = texto.substring(posicion, Math.min(texto.length, posicion + 200));
+                    let cantidad = 0;
+
+                    // Buscar patrón: CM3 seguido de cantidad
+                    // O buscar "Cant." seguido de un número
+                    const matchCantCM3 = contexto.match(/CM3\s+([\d]+[\.,]?\d*)/i);
+                    const matchCant = contexto.match(/Cant[\.:]\s*(\d+)/i);
+                    
+                    // También buscar cualquier número después del código que parezca una cantidad
+                    const matchNumero = contexto.match(/\b(\d{1,4})(?:\.\d{2})?\b/);
+
+                    if (matchCantCM3) {
+                        const valorStr = matchCantCM3[1].replace(',', '.');
+                        cantidad = Math.floor(parseFloat(valorStr));
+                        console.log(`   [RECEP] ${codigo} → CM3 → "${matchCantCM3[1]}" → Cant: ${cantidad}`);
+                    } else if (matchCant) {
+                        cantidad = parseInt(matchCant[1]);
+                        console.log(`   [RECEP] ${codigo} → Cant. → ${cantidad}`);
+                    } else if (matchNumero) {
+                        const num = parseInt(matchNumero[1]);
+                        if (num > 0 && num < 1000) {
+                            cantidad = num;
+                            console.log(`   [RECEP] ${codigo} → Número → ${cantidad}`);
+                        }
+                    }
+
+                    // Buscar producto en la base de datos
+                    const producto = productos.find(p => p.codigo === codigo);
+                    
+                    if (producto && cantidad > 0) {
+                        productosYaAgregados.add(codigo);
+                        
+                        productosEncontrados.push({
+                            ...producto,
+                            pedido: cantidad, // La cantidad en recepción
+                            recibido: 0,
+                            nroOrden: nroOrden
+                        });
+                        console.log(`✅ [RECEP] ${codigo} → Cant: ${cantidad} → ${producto.descripcion.substring(0,30)}...`);
+                    } else if (producto) {
+                        console.log(`⚠️ [RECEP] ${codigo} → Cant: 0 (no se pudo extraer cantidad)`);
+                    }
+                }
+
+                console.log('');
+                console.log('============================================');
+                console.log('📦 RESUMEN RECEPCIÓN');
+                console.log('============================================');
+                console.log('Productos detectados:', productosEncontrados.length);
+                console.log('N° Orden:', nroOrden);
+                console.log('============================================');
+
+                return {
+                    nroOrden: nroOrden,
+                    productos: productosEncontrados,
+                    esRecepcion: true
+                };
+            };
+
             const handleCargarPDF = async (event) => {
                 const file = event.target.files[0];
                 if (!file || file.type !== 'application/pdf') {
@@ -1316,7 +1423,9 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
 
                 try {
                     const texto = await extractTextFromPDF(file);
-                    const resultado = parsearPDF(texto);
+                    
+                    // NUEVO: Usar función especial para recepciones
+                    const resultado = parsearPDFRecepcion(texto);
 
                     if (resultado.productos.length === 0) {
                         setErrorPDFRecepcion('No se encontraron productos en el PDF de recepción');
@@ -1329,10 +1438,15 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                     const productosSinMatch = [];
                     
                     resultado.productos.forEach(prodRecepcion => {
-                        const productoExistente = productosSeleccionados.find(p => 
-                            p.codigo === prodRecepcion.codigo && 
-                            (p.nroOrden === prodRecepcion.nroOrden || !prodRecepcion.nroOrden)
+                        // Buscar coincidencia por código Y por nroOrden (si existe)
+                        let productoExistente = productosSeleccionados.find(p => 
+                            p.codigo === prodRecepcion.codigo && p.nroOrden === prodRecepcion.nroOrden
                         );
+                        
+                        // Si no encuentra por nroOrden, buscar solo por código
+                        if (!productoExistente) {
+                            productoExistente = productosSeleccionados.find(p => p.codigo === prodRecepcion.codigo);
+                        }
                         
                         if (productoExistente) {
                             productosConMatch.push({
@@ -1349,6 +1463,12 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                         setErrorPDFRecepcion('No se encontraron coincidencias con los productos de la orden');
                         setCargandoPDFRecepcion(false);
                         return;
+                    }
+
+                    console.log('📦 Productos con match:', productosConMatch.length);
+                    console.log('⚠️ Productos sin match:', productosSinMatch.length);
+                    if (productosSinMatch.length > 0) {
+                        console.log('Códigos sin match:', productosSinMatch.map(p => p.codigo).join(', '));
                     }
 
                     setRecepcionPDF(productosConMatch);
@@ -1833,7 +1953,7 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                                         value={sucursal}
                                         onChange={(e) => setSucursal(e.target.value)}
                                     >
-                                        <option value="">Seleccione Sucursal/Depósito</option>
+                                        <option value="">Seleccione sucursal</option>
                                         {sucursales.map(s => <option key={s} value={s}>{s}</option>)}
                                     </select>
                                 </div>
