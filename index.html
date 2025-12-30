@@ -969,8 +969,13 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
         }
 
         const productos = parseProductos();
-        const proveedores = ['QUILMES', 'CCU', 'COCA COLA', 'DANONE-MASTELLONE'];
+        const proveedores = ['QUILMES', 'CCU', 'COCA COLA', 'DANONE', 'MASTELLONE'];
         const sucursales = ['006', '068', '162', '225', '226', '229', '232', '233', '235', '236', '237', '239', '240', '248', '254'];
+        
+        // Función para normalizar nombres de proveedores (ya no es necesaria, pero la mantengo por compatibilidad)
+        const normalizarProveedor = (proveedor) => {
+            return proveedor.toUpperCase().trim();
+        };
 
         function App() {
             const [proveedor, setProveedor] = useState(() => {
