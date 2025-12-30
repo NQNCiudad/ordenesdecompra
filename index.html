@@ -1002,7 +1002,7 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
 
         const productos = parseProductos();
         const proveedores = ['QUILMES', 'CCU', 'COCA COLA', 'DANONE-MASTELLONE'];
-        const sucursales = ['006', '068', '162', '225', '226', '229', '232', '233', '235', '236', '237', '239', '240', '248'];
+        const sucursales = ['006', '068', '162', '225', '226', '229', '232', '233', '235', '236', '237', '239', '240', '248', '254'];
 
         function App() {
             const [proveedor, setProveedor] = useState(() => {
@@ -1635,11 +1635,14 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                 URL.revokeObjectURL(url);
             };
 
-            const enviarPorCorreo = () => {
-                // Pedir email destinatario
-                const destinatario = prompt('Ingrese el email destinatario:', '');
-                if (!destinatario) return;
+            const enviarPorWhatsApp = () => {
+                // Pedir número de WhatsApp
+                const numero = prompt('Ingrese el número de WhatsApp (sin +54, sin 0, sin 15):\nEjemplo: 2993324675', '');
+                if (!numero) return;
 
+                // Limpiar el número (quitar espacios, guiones, etc)
+                const numeroLimpio = numero.replace(/\D/g, '');
+                
                 // Calcular totales
                 const totalPedido = productosSeleccionados.reduce((sum, p) => sum + p.pedido, 0);
                 const totalRecibido = productosSeleccionados.reduce((sum, p) => sum + p.recibido, 0);
@@ -1650,23 +1653,77 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                 const completos = productosSeleccionados.filter(p => calcularDiferencia(p.pedido, p.recibido) >= 0);
                 const faltantes = productosSeleccionados.filter(p => calcularDiferencia(p.pedido, p.recibido) < 0);
 
-                // Crear cuerpo del email
-                let body = `CONTROL DE ÓRDENES DE COMPRA%0D%0A`;
-                body += `===============================================%0D%0A`;
-                body += `Proveedor: ${proveedor}%0D%0A`;
-                body += `Sucursal: ${sucursal}%0D%0A`;
-                body += `Fecha: ${new Date().toLocaleDateString('es-AR')}%0D%0A`;
-                body += `===============================================%0D%0A%0D%0A`;
+                // Crear mensaje para WhatsApp
+                let mensaje = `*CONTROL DE ÓRDENES DE COMPRA*\n`;
+                mensaje += `━━━━━━━━━━━━━━━━━━━━━\n`;
+                mensaje += `📦 Proveedor: *${proveedor}*\n`;
+                mensaje += `🏪 Sucursal: *${sucursal}*\n`;
+                mensaje += `📅 Fecha: ${new Date().toLocaleDateString('es-AR')}\n`;
+                mensaje += `━━━━━━━━━━━━━━━━━━━━━\n\n`;
 
-                body += `📊 RESUMEN GENERAL%0D%0A`;
-                body += `Total Productos: ${productosSeleccionados.length}%0D%0A`;
-                body += `Total Pedido: ${totalPedido} unidades%0D%0A`;
-                body += `Total Recibido: ${totalRecibido} unidades%0D%0A`;
-                body += `Diferencia: ${totalDif > 0 ? '+' : ''}${totalDif} unidades%0D%0A`;
-                body += `Cumplimiento Global: ${cumplimientoGlobal}%%0D%0A%0D%0A`;
+                mensaje += `📊 *RESUMEN GENERAL*\n`;
+                mensaje += `Total Productos: ${productosSeleccionados.length}\n`;
+                mensaje += `Total Pedido: ${totalPedido} unidades\n`;
+                mensaje += `Total Recibido: ${totalRecibido} unidades\n`;
+                mensaje += `Diferencia: ${totalDif > 0 ? '+' : ''}${totalDif}\n`;
+                mensaje += `Cumplimiento: *${cumplimientoGlobal}%*\n\n`;
 
-                body += `✅ PRODUCTOS COMPLETOS: ${completos.length}%0D%0A`;
-                body += `❌ PRODUCTOS FALTANTES: ${faltantes.length}%0D%0A%0D%0A`;
+                mensaje += `✅ Completos: ${completos.length}\n`;
+                mensaje += `❌ Faltantes: ${faltantes.length}\n\n`;
+
+                // Solo mostrar faltantes si hay (para no hacer el mensaje muy largo)
+                if (faltantes.length > 0 && faltantes.length <= 10) {
+                    mensaje += `⚠️ *PRODUCTOS FALTANTES:*\n`;
+                    faltantes.forEach(p => {
+                        const dif = calcularDiferencia(p.pedido, p.recibido);
+                        mensaje += `• ${p.codigo} - ${p.descripcion.substring(0, 25)}...\n`;
+                        mensaje += `  Pedido: ${p.pedido} | Recibido: ${p.recibido} | Dif: ${dif}\n`;
+                    });
+                } else if (faltantes.length > 10) {
+                    mensaje += `⚠️ Hay ${faltantes.length} productos con faltantes\n`;
+                }
+
+                mensaje += `\n━━━━━━━━━━━━━━━━━━━━━\n`;
+                mensaje += `Sistema SAIEP - Control de Órdenes`;
+
+                // Codificar mensaje para URL
+                const mensajeCodificado = encodeURIComponent(mensaje);
+
+                // Abrir WhatsApp Web
+                window.open(`https://wa.me/54${numeroLimpio}?text=${mensajeCodificado}`, '_blank');
+                
+                setMensajeGuardado('📱 Abriendo WhatsApp...');
+                setTimeout(() => setMensajeGuardado(''), 3000);
+            };
+
+            const copiarReporte = async () => {
+                // Calcular totales
+                const totalPedido = productosSeleccionados.reduce((sum, p) => sum + p.pedido, 0);
+                const totalRecibido = productosSeleccionados.reduce((sum, p) => sum + p.recibido, 0);
+                const totalDif = totalRecibido - totalPedido;
+                const cumplimientoGlobal = calcularPorcentaje(totalPedido, totalRecibido);
+                
+                // Agrupar por estado
+                const completos = productosSeleccionados.filter(p => calcularDiferencia(p.pedido, p.recibido) >= 0);
+                const faltantes = productosSeleccionados.filter(p => calcularDiferencia(p.pedido, p.recibido) < 0);
+
+                // Crear reporte en texto plano
+                let reporte = `CONTROL DE ÓRDENES DE COMPRA\n`;
+                reporte += `===============================================\n`;
+                reporte += `Proveedor: ${proveedor}\n`;
+                reporte += `Sucursal: ${sucursal}\n`;
+                reporte += `Fecha: ${new Date().toLocaleDateString('es-AR')}\n`;
+                reporte += `===============================================\n\n`;
+
+                reporte += `📊 RESUMEN GENERAL\n`;
+                reporte += `Total Productos: ${productosSeleccionados.length}\n`;
+                reporte += `Total Pedido: ${totalPedido} unidades\n`;
+                reporte += `Total Recibido: ${totalRecibido} unidades\n`;
+                reporte += `Diferencia: ${totalDif > 0 ? '+' : ''}${totalDif} unidades\n`;
+                reporte += `Cumplimiento Global: ${cumplimientoGlobal}%\n\n`;
+
+                reporte += `✅ PRODUCTOS COMPLETOS: ${completos.length}\n`;
+                reporte += `❌ PRODUCTOS FALTANTES: ${faltantes.length}\n\n`;
 
                 // Agrupar por N° Orden
                 const ordenesUnicas = [...new Set(productosSeleccionados.map(p => p.nroOrden || 'MANUAL'))];
@@ -1674,30 +1731,38 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                 ordenesUnicas.forEach(orden => {
                     const prodsOrden = productosSeleccionados.filter(p => (p.nroOrden || 'MANUAL') === orden);
                     
-                    body += `------------------------------------------------%0D%0A`;
-                    body += orden === 'MANUAL' ? `📝 PRODUCTOS MANUALES%0D%0A` : `📋 ORDEN N° ${orden}%0D%0A`;
-                    body += `------------------------------------------------%0D%0A`;
+                    reporte += `------------------------------------------------\n`;
+                    reporte += orden === 'MANUAL' ? `📝 PRODUCTOS MANUALES\n` : `📋 ORDEN N° ${orden}\n`;
+                    reporte += `------------------------------------------------\n`;
                     
                     prodsOrden.forEach(p => {
                         const dif = calcularDiferencia(p.pedido, p.recibido);
                         const estado = dif >= 0 ? '✅' : '❌';
-                        body += `${estado} ${p.codigo} - ${p.descripcion.substring(0, 30)}...%0D%0A`;
-                        body += `   Pedido: ${p.pedido} | Recibido: ${p.recibido} | Dif: ${dif > 0 ? '+' : ''}${dif}%0D%0A`;
+                        reporte += `${estado} ${p.codigo} - ${p.descripcion}\n`;
+                        reporte += `   Pedido: ${p.pedido} | Recibido: ${p.recibido} | Diferencia: ${dif > 0 ? '+' : ''}${dif}\n`;
                     });
-                    body += `%0D%0A`;
+                    reporte += `\n`;
                 });
 
-                body += `===============================================%0D%0A`;
-                body += `Generado por: Sistema SAIEP - Control de Órdenes%0D%0A`;
-                body += `Desarrollado por: Jonathan Cheves%0D%0A`;
+                reporte += `===============================================\n`;
+                reporte += `Generado por: Sistema SAIEP - Control de Órdenes\n`;
+                reporte += `Desarrollado por: Jonathan Cheves\n`;
 
-                // Crear asunto
-                const asunto = `Control de Orden - ${proveedor} - Suc ${sucursal} - ${new Date().toLocaleDateString('es-AR')}`;
-
-                // Abrir cliente de correo
-                window.location.href = `mailto:${destinatario}?subject=${encodeURIComponent(asunto)}&body=${body}`;
+                // Copiar al portapapeles
+                try {
+                    await navigator.clipboard.writeText(reporte);
+                    setMensajeGuardado('📋 ¡Reporte copiado al portapapeles!');
+                } catch (err) {
+                    // Fallback para navegadores que no soportan clipboard API
+                    const textarea = document.createElement('textarea');
+                    textarea.value = reporte;
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textarea);
+                    setMensajeGuardado('📋 ¡Reporte copiado!');
+                }
                 
-                setMensajeGuardado('📧 Abriendo cliente de correo...');
                 setTimeout(() => setMensajeGuardado(''), 3000);
             };
 
@@ -2009,20 +2074,30 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                                     </h2>
                                     <div className="space-x-2">
                                         <button 
-                                            onClick={enviarPorCorreo}
-                                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                                            onClick={enviarPorWhatsApp}
+                                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                                            title="Enviar reporte por WhatsApp"
                                         >
-                                            📧 Enviar por Correo
+                                            📱 WhatsApp
+                                        </button>
+                                        <button 
+                                            onClick={copiarReporte}
+                                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                                            title="Copiar reporte al portapapeles"
+                                        >
+                                            📋 Copiar
                                         </button>
                                         <button 
                                             onClick={exportarExcel}
-                                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                                            className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700"
+                                            title="Exportar a Excel"
                                         >
-                                            📊 Exportar Excel
+                                            📊 Excel
                                         </button>
                                         <button 
                                             onClick={limpiarOrden}
                                             className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                                            title="Limpiar toda la orden"
                                         >
                                             🗑️ Limpiar
                                         </button>
