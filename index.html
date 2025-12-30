@@ -1744,7 +1744,7 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
 
             const enviarPorWhatsApp = async () => {
                 // Preguntar si quiere enviar con o sin PDF
-                const opcion = confirm('¿Desea adjuntar el PDF al mensaje de WhatsApp?\n\nOK = Con PDF adjunto\nCancelar = Solo texto');
+                const conPDF = confirm('¿Desea adjuntar el PDF al mensaje de WhatsApp?\n\nOK = Con PDF adjunto\nCancelar = Solo texto');
                 
                 // Pedir número de WhatsApp
                 const numero = prompt('Ingrese el número de WhatsApp (sin +54, sin 0, sin 15):\nEjemplo: 2995551234', '');
@@ -1793,49 +1793,26 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                     mensaje += `⚠️ Hay ${faltantes.length} productos con faltantes\n`;
                 }
 
-                if (opcion) {
-                    // OPCIÓN CON PDF: usar Web Share API
-                    mensaje += `\n📄 *Ver detalle completo en PDF adjunto*`;
+                if (conPDF) {
+                    // CON PDF: Descargar primero y luego abrir WhatsApp
+                    mensaje += `\n\n📄 *Ver detalle completo en PDF adjunto*\n`;
+                    mensaje += `(El PDF se descargó automáticamente - adjuntarlo desde la carpeta Descargas)`;
                     
-                    try {
-                        // Generar PDF
-                        const pdfBlob = await generarPDFBlob();
-                        
-                        // Verificar si el navegador soporta Web Share API con archivos
-                        if (navigator.canShare && navigator.canShare({ files: [new File([pdfBlob], 'test.pdf')] })) {
-                            const nombreArchivo = `orden_${proveedor}_${sucursal}_${new Date().toISOString().split('T')[0]}.pdf`;
-                            const archivo = new File([pdfBlob], nombreArchivo, { type: 'application/pdf' });
-                            
-                            await navigator.share({
-                                title: 'Control de Orden',
-                                text: mensaje,
-                                files: [archivo]
-                            });
-                            
-                            setMensajeGuardado('📱 Compartiendo por WhatsApp...');
-                        } else {
-                            // Fallback: descargar PDF y abrir WhatsApp con el mensaje
-                            const url = URL.createObjectURL(pdfBlob);
-                            const a = document.createElement('a');
-                            a.href = url;
-                            a.download = `orden_${proveedor}_${sucursal}_${new Date().toISOString().split('T')[0]}.pdf`;
-                            a.click();
-                            URL.revokeObjectURL(url);
-                            
-                            // Abrir WhatsApp
-                            setTimeout(() => {
-                                const mensajeCodificado = encodeURIComponent(mensaje + '\n\n(PDF descargado - adjuntarlo manualmente)');
-                                window.open(`https://wa.me/54${numeroLimpio}?text=${mensajeCodificado}`, '_blank');
-                            }, 500);
-                            
-                            setMensajeGuardado('📄 PDF descargado. Adjuntarlo manualmente en WhatsApp');
-                        }
-                    } catch (error) {
-                        console.error('Error al compartir:', error);
-                        setMensajeGuardado('❌ Error al compartir. Intente descargar el PDF manualmente.');
-                    }
+                    setMensajeGuardado('📄 Descargando PDF...');
+                    
+                    // Generar y descargar PDF
+                    await exportarPDF();
+                    
+                    // Esperar un momento para que se complete la descarga
+                    setTimeout(() => {
+                        const mensajeCodificado = encodeURIComponent(mensaje);
+                        window.open(`https://wa.me/54${numeroLimpio}?text=${mensajeCodificado}`, '_blank');
+                        setMensajeGuardado('📱 Abriendo WhatsApp. Adjuntar el PDF descargado.');
+                        setTimeout(() => setMensajeGuardado(''), 5000);
+                    }, 1000);
+                    
                 } else {
-                    // OPCIÓN SOLO TEXTO (como antes)
+                    // SOLO TEXTO
                     mensaje += `\n━━━━━━━━━━━━━━━━━━━━━\n`;
                     mensaje += `Sistema SAIEP - Control de Ordenes`;
                     
@@ -1843,117 +1820,8 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                     window.open(`https://wa.me/54${numeroLimpio}?text=${mensajeCodificado}`, '_blank');
                     
                     setMensajeGuardado('📱 Abriendo WhatsApp...');
+                    setTimeout(() => setMensajeGuardado(''), 3000);
                 }
-                
-                setTimeout(() => setMensajeGuardado(''), 3000);
-            };
-
-            // Función auxiliar para generar PDF como Blob
-            const generarPDFBlob = () => {
-                return new Promise((resolve) => {
-                    const { jsPDF } = window.jspdf;
-                    const doc = new jsPDF('l', 'mm', 'a4');
-                    
-                    // Título
-                    doc.setFontSize(16);
-                    doc.setFont(undefined, 'bold');
-                    doc.text('CONTROL DE ORDENES DE COMPRA', 148, 15, { align: 'center' });
-                    
-                    // Información general
-                    doc.setFontSize(10);
-                    doc.setFont(undefined, 'normal');
-                    doc.text(`Proveedor: ${proveedor}`, 14, 25);
-                    doc.text(`Sucursal: ${sucursal}`, 14, 30);
-                    doc.text(`Fecha: ${new Date().toLocaleDateString('es-AR')}`, 14, 35);
-                    
-                    // Preparar datos para la tabla
-                    const datosTabla = productosSeleccionados.map(p => {
-                        const dif = calcularDiferencia(p.pedido, p.recibido);
-                        const pct = calcularPorcentaje(p.pedido, p.recibido);
-                        const estado = dif >= 0 ? 'Completo' : 'Faltante';
-                        
-                        return [
-                            p.nroOrden || '-',
-                            p.codigo,
-                            p.descripcion.substring(0, 35) + (p.descripcion.length > 35 ? '...' : ''),
-                            p.marca,
-                            p.bulto,
-                            p.pedido,
-                            p.recibido,
-                            (dif > 0 ? '+' : '') + dif,
-                            estado,
-                            pct + '%'
-                        ];
-                    });
-                    
-                    // Calcular totales
-                    const totalPedido = productosSeleccionados.reduce((sum, p) => sum + p.pedido, 0);
-                    const totalRecibido = productosSeleccionados.reduce((sum, p) => sum + p.recibido, 0);
-                    const totalDif = totalRecibido - totalPedido;
-                    const cumplimientoGlobal = calcularPorcentaje(totalPedido, totalRecibido);
-                    
-                    // Crear tabla
-                    doc.autoTable({
-                        startY: 40,
-                        head: [['N Orden', 'Codigo', 'Descripcion', 'Marca', 'Bulto', 'Pedido', 'Recibido', 'Dif.', 'Estado', '%']],
-                        body: datosTabla,
-                        foot: [['', '', '', '', 'TOTALES', totalPedido, totalRecibido, (totalDif > 0 ? '+' : '') + totalDif, cumplimientoGlobal + '%', '']],
-                        theme: 'grid',
-                        headStyles: { 
-                            fillColor: [79, 70, 229],
-                            textColor: 255,
-                            fontStyle: 'bold',
-                            fontSize: 8
-                        },
-                        footStyles: {
-                            fillColor: [31, 41, 55],
-                            textColor: 255,
-                            fontStyle: 'bold',
-                            fontSize: 9
-                        },
-                        bodyStyles: {
-                            fontSize: 7,
-                            cellPadding: 2
-                        },
-                        columnStyles: {
-                            0: { cellWidth: 18 },
-                            1: { cellWidth: 18 },
-                            2: { cellWidth: 70 },
-                            3: { cellWidth: 25 },
-                            4: { cellWidth: 12 },
-                            5: { cellWidth: 15 },
-                            6: { cellWidth: 15 },
-                            7: { cellWidth: 15 },
-                            8: { cellWidth: 22 },
-                            9: { cellWidth: 12 }
-                        },
-                        didParseCell: function(data) {
-                            if (data.section === 'body' && data.column.index === 8) {
-                                if (data.cell.text[0] && data.cell.text[0] === 'Completo') {
-                                    data.row.cells[8].styles.textColor = [6, 95, 70];
-                                    data.row.cells[8].styles.fillColor = [209, 250, 229];
-                                    data.row.cells[8].styles.fontStyle = 'bold';
-                                } else if (data.cell.text[0] && data.cell.text[0] === 'Faltante') {
-                                    data.row.cells[8].styles.textColor = [153, 27, 27];
-                                    data.row.cells[8].styles.fillColor = [254, 226, 226];
-                                    data.row.cells[8].styles.fontStyle = 'bold';
-                                }
-                            }
-                        }
-                    });
-                    
-                    // Footer
-                    const pageCount = doc.internal.getNumberOfPages();
-                    for (let i = 1; i <= pageCount; i++) {
-                        doc.setPage(i);
-                        doc.setFontSize(8);
-                        doc.setTextColor(128);
-                        doc.text(`Sistema SAIEP - Control de Ordenes | Pag. ${i} de ${pageCount}`, 148, 200, { align: 'center' });
-                    }
-                    
-                    // Retornar como Blob
-                    resolve(doc.output('blob'));
-                });
             };
 
             const copiarReporte = async () => {
