@@ -8,6 +8,9 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
@@ -1559,85 +1562,187 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                 return Math.round((recibido / pedido) * 100);
             };
 
-            const exportarExcel = () => {
-                // Crear tabla HTML limpia
-                let html = '<!DOCTYPE html><html><head><meta charset="UTF-8">';
-                html += '<style>';
-                html += 'table { border-collapse: collapse; }';
-                html += 'td, th { border: 1px solid #E5E7EB; padding: 8px; }';
-                html += '.header { background-color: #4F46E5; color: white; font-weight: bold; text-align: center; }';
-                html += '.completo { background-color: #D1FAE5; color: #065F46; font-weight: bold; }';
-                html += '.faltante { background-color: #FEE2E2; color: #991B1B; font-weight: bold; }';
-                html += '.total { background-color: #1F2937; color: white; font-weight: bold; }';
-                html += '</style></head><body>';
+            const exportarXLSX = () => {
+                // Crear datos para la hoja de cálculo
+                const datosExcel = [];
                 
-                // Tabla con 10 columnas (agregamos N° Orden)
-                html += '<table>';
-                html += '<tr><th colspan="10" class="header">Control de Órdenes de Compra</th></tr>';
-                html += '<tr><td colspan="10">Proveedor: ' + proveedor + ' | Sucursal: ' + sucursal + '</td></tr>';
-                html += '<tr class="header">';
-                html += '<th>N° Orden</th>';
-                html += '<th>Código</th>';
-                html += '<th>Descripción</th>';
-                html += '<th>Marca</th>';
-                html += '<th>Bulto</th>';
-                html += '<th>Pedido</th>';
-                html += '<th>Recibido</th>';
-                html += '<th>Diferencia</th>';
-                html += '<th>Estado</th>';
-                html += '<th>%</th>';
-                html += '</tr>';
-
-                // Filas de productos
+                // Encabezado con información general
+                datosExcel.push(['CONTROL DE ÓRDENES DE COMPRA']);
+                datosExcel.push([`Proveedor: ${proveedor}`, `Sucursal: ${sucursal}`, `Fecha: ${new Date().toLocaleDateString('es-AR')}`]);
+                datosExcel.push([]); // Línea vacía
+                
+                // Encabezados de columnas
+                datosExcel.push(['N° Orden', 'Código', 'Descripción', 'Marca', 'Bulto', 'Pedido', 'Recibido', 'Diferencia', 'Estado', '%']);
+                
+                // Datos de productos
                 productosSeleccionados.forEach(p => {
                     const dif = calcularDiferencia(p.pedido, p.recibido);
                     const pct = calcularPorcentaje(p.pedido, p.recibido);
-                    const clase = dif >= 0 ? 'completo' : 'faltante';
                     const estado = dif >= 0 ? 'Completo' : 'Faltante';
                     
-                    html += '<tr class="' + clase + '">';
-                    html += '<td>' + (p.nroOrden || '-') + '</td>';
-                    html += '<td>' + p.codigo + '</td>';
-                    html += '<td>' + p.descripcion + '</td>';
-                    html += '<td>' + p.marca + '</td>';
-                    html += '<td>' + p.bulto + '</td>';
-                    html += '<td>' + p.pedido + '</td>';
-                    html += '<td>' + p.recibido + '</td>';
-                    html += '<td>' + (dif > 0 ? '+' : '') + dif + '</td>';
-                    html += '<td>' + estado + '</td>';
-                    html += '<td>' + pct + '%</td>';
-                    html += '</tr>';
+                    datosExcel.push([
+                        p.nroOrden || '-',
+                        p.codigo,
+                        p.descripcion,
+                        p.marca,
+                        p.bulto,
+                        p.pedido,
+                        p.recibido,
+                        dif,
+                        estado,
+                        pct
+                    ]);
                 });
-
+                
                 // Fila de totales
                 const totalPedido = productosSeleccionados.reduce((sum, p) => sum + p.pedido, 0);
                 const totalRecibido = productosSeleccionados.reduce((sum, p) => sum + p.recibido, 0);
                 const totalDif = totalRecibido - totalPedido;
                 const cumplimientoGlobal = calcularPorcentaje(totalPedido, totalRecibido);
-
-                html += '<tr class="total">';
-                html += '<td colspan="5">TOTALES</td>';
-                html += '<td>' + totalPedido + '</td>';
-                html += '<td>' + totalRecibido + '</td>';
-                html += '<td>' + (totalDif > 0 ? '+' : '') + totalDif + '</td>';
-                html += '<td colspan="2">' + cumplimientoGlobal + '% Cumplimiento</td>';
-                html += '</tr>';
                 
-                html += '</table></body></html>';
+                datosExcel.push([]);
+                datosExcel.push(['', '', '', '', 'TOTALES', totalPedido, totalRecibido, totalDif, `${cumplimientoGlobal}% Cumplimiento`, '']);
+                
+                // Crear libro de trabajo
+                const wb = XLSX.utils.book_new();
+                const ws = XLSX.utils.aoa_to_sheet(datosExcel);
+                
+                // Ajustar anchos de columna
+                ws['!cols'] = [
+                    { wch: 12 },  // N° Orden
+                    { wch: 10 },  // Código
+                    { wch: 40 },  // Descripción
+                    { wch: 15 },  // Marca
+                    { wch: 8 },   // Bulto
+                    { wch: 10 },  // Pedido
+                    { wch: 10 },  // Recibido
+                    { wch: 12 },  // Diferencia
+                    { wch: 12 },  // Estado
+                    { wch: 8 }    // %
+                ];
+                
+                // Agregar la hoja al libro
+                XLSX.utils.book_append_sheet(wb, ws, 'Control Orden');
+                
+                // Descargar archivo
+                const nombreArchivo = `orden_${proveedor}_${sucursal}_${new Date().toISOString().split('T')[0]}.xlsx`;
+                XLSX.writeFile(wb, nombreArchivo);
+                
+                setMensajeGuardado('📊 Excel generado correctamente');
+                setTimeout(() => setMensajeGuardado(''), 3000);
+            };
 
-                // Crear blob y descargar
-                const blob = new Blob(['\ufeff' + html], { type: 'application/vnd.ms-excel;charset=utf-8' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'orden_' + proveedor + '_' + sucursal + '_' + new Date().toISOString().split('T')[0] + '.xls';
-                a.click();
-                URL.revokeObjectURL(url);
+            const exportarPDF = () => {
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF('l', 'mm', 'a4'); // Landscape, mm, A4
+                
+                // Título
+                doc.setFontSize(16);
+                doc.setFont(undefined, 'bold');
+                doc.text('CONTROL DE ÓRDENES DE COMPRA', 148, 15, { align: 'center' });
+                
+                // Información general
+                doc.setFontSize(10);
+                doc.setFont(undefined, 'normal');
+                doc.text(`Proveedor: ${proveedor}`, 14, 25);
+                doc.text(`Sucursal: ${sucursal}`, 14, 30);
+                doc.text(`Fecha: ${new Date().toLocaleDateString('es-AR')}`, 14, 35);
+                
+                // Preparar datos para la tabla
+                const datosTabla = productosSeleccionados.map(p => {
+                    const dif = calcularDiferencia(p.pedido, p.recibido);
+                    const pct = calcularPorcentaje(p.pedido, p.recibido);
+                    const estado = dif >= 0 ? '✓ Completo' : '✗ Faltante';
+                    
+                    return [
+                        p.nroOrden || '-',
+                        p.codigo,
+                        p.descripcion.substring(0, 35) + (p.descripcion.length > 35 ? '...' : ''),
+                        p.marca,
+                        p.bulto,
+                        p.pedido,
+                        p.recibido,
+                        (dif > 0 ? '+' : '') + dif,
+                        estado,
+                        pct + '%'
+                    ];
+                });
+                
+                // Calcular totales
+                const totalPedido = productosSeleccionados.reduce((sum, p) => sum + p.pedido, 0);
+                const totalRecibido = productosSeleccionados.reduce((sum, p) => sum + p.recibido, 0);
+                const totalDif = totalRecibido - totalPedido;
+                const cumplimientoGlobal = calcularPorcentaje(totalPedido, totalRecibido);
+                
+                // Crear tabla
+                doc.autoTable({
+                    startY: 40,
+                    head: [['N° Orden', 'Código', 'Descripción', 'Marca', 'Bulto', 'Pedido', 'Recibido', 'Dif.', 'Estado', '%']],
+                    body: datosTabla,
+                    foot: [['', '', '', '', 'TOTALES', totalPedido, totalRecibido, (totalDif > 0 ? '+' : '') + totalDif, cumplimientoGlobal + '%', '']],
+                    theme: 'grid',
+                    headStyles: { 
+                        fillColor: [79, 70, 229], // Indigo
+                        textColor: 255,
+                        fontStyle: 'bold',
+                        fontSize: 8
+                    },
+                    footStyles: {
+                        fillColor: [31, 41, 55], // Gray-800
+                        textColor: 255,
+                        fontStyle: 'bold',
+                        fontSize: 9
+                    },
+                    bodyStyles: {
+                        fontSize: 7,
+                        cellPadding: 2
+                    },
+                    columnStyles: {
+                        0: { cellWidth: 18 },  // N° Orden
+                        1: { cellWidth: 18 },  // Código
+                        2: { cellWidth: 70 },  // Descripción
+                        3: { cellWidth: 25 },  // Marca
+                        4: { cellWidth: 12 },  // Bulto
+                        5: { cellWidth: 15 },  // Pedido
+                        6: { cellWidth: 15 },  // Recibido
+                        7: { cellWidth: 15 },  // Diferencia
+                        8: { cellWidth: 22 },  // Estado
+                        9: { cellWidth: 12 }   // %
+                    },
+                    didParseCell: function(data) {
+                        // Colorear filas según estado
+                        if (data.section === 'body' && data.column.index === 8) {
+                            if (data.cell.text[0] && data.cell.text[0].includes('Completo')) {
+                                data.row.cells[8].styles.textColor = [6, 95, 70]; // Green
+                                data.row.cells[8].styles.fillColor = [209, 250, 229]; // Green-light
+                            } else if (data.cell.text[0] && data.cell.text[0].includes('Faltante')) {
+                                data.row.cells[8].styles.textColor = [153, 27, 27]; // Red
+                                data.row.cells[8].styles.fillColor = [254, 226, 226]; // Red-light
+                            }
+                        }
+                    }
+                });
+                
+                // Footer con información del sistema
+                const pageCount = doc.internal.getNumberOfPages();
+                for (let i = 1; i <= pageCount; i++) {
+                    doc.setPage(i);
+                    doc.setFontSize(8);
+                    doc.setTextColor(128);
+                    doc.text(`Sistema SAIEP - Control de Órdenes | Pág. ${i} de ${pageCount}`, 148, 200, { align: 'center' });
+                }
+                
+                // Descargar PDF
+                const nombreArchivo = `orden_${proveedor}_${sucursal}_${new Date().toISOString().split('T')[0]}.pdf`;
+                doc.save(nombreArchivo);
+                
+                setMensajeGuardado('📄 PDF generado correctamente');
+                setTimeout(() => setMensajeGuardado(''), 3000);
             };
 
             const enviarPorWhatsApp = () => {
                 // Pedir número de WhatsApp
-                const numero = prompt('Ingrese el número de WhatsApp (sin +54, sin 0, sin 15):\nEjemplo: 2993324675', '');
+                const numero = prompt('Ingrese el número de WhatsApp (sin +54, sin 0, sin 15):\nEjemplo: 2995551234', '');
                 if (!numero) return;
 
                 // Limpiar el número (quitar espacios, guiones, etc)
@@ -2088,15 +2193,22 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                                             📋 Copiar
                                         </button>
                                         <button 
-                                            onClick={exportarExcel}
+                                            onClick={exportarPDF}
+                                            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                                            title="Exportar a PDF"
+                                        >
+                                            📄 PDF
+                                        </button>
+                                        <button 
+                                            onClick={exportarXLSX}
                                             className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700"
-                                            title="Exportar a Excel"
+                                            title="Exportar a Excel (XLSX)"
                                         >
                                             📊 Excel
                                         </button>
                                         <button 
                                             onClick={limpiarOrden}
-                                            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                                            className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
                                             title="Limpiar toda la orden"
                                         >
                                             🗑️ Limpiar
