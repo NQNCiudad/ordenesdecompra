@@ -1002,7 +1002,7 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
 
         const productos = parseProductos();
         const proveedores = ['QUILMES', 'CCU', 'COCA COLA', 'DANONE-MASTELLONE'];
-        const sucursales = ['006', '068', '162', '225', '226', '229', '232', '233', '235', '236', '237', '239', '240', '248'];
+        const sucursales = ['006', '068', '162', '225', '226', '229', '232', '233', '235', '236', '237', '239', '240', '248','254'];
 
         function App() {
             const [proveedor, setProveedor] = useState(() => {
@@ -1276,26 +1276,22 @@ DANONE-MASTELLONE|3216020|LECHE LV MODIFICADA ETAPA 4|VITAL|24|200|CM3`;
                     const contexto = texto.substring(posicion, Math.min(texto.length, posicion + 200));
                     let cantidad = 0;
 
-                    // Buscar patrón: CM3 seguido de cantidad
-                    // O buscar "Cant." seguido de un número
-                    const matchCantCM3 = contexto.match(/CM3\s+([\d]+[\.,]?\d*)/i);
-                    const matchCant = contexto.match(/Cant[\.:]\s*(\d+)/i);
+                    // Buscar patrón: CM3 seguido de la CANTIDAD (número entero)
+                    // Estructura del PDF: ... CM3 [CANTIDAD_ENTERA] [COSTO_DECIMAL] ...
+                    // Ejemplo: CM3 60 4004.17
+                    // La cantidad es el primer número SIN decimales después de CM3
                     
-                    // También buscar cualquier número después del código que parezca una cantidad
-                    const matchNumero = contexto.match(/\b(\d{1,4})(?:\.\d{2})?\b/);
-
-                    if (matchCantCM3) {
-                        const valorStr = matchCantCM3[1].replace(',', '.');
-                        cantidad = Math.floor(parseFloat(valorStr));
-                        console.log(`   [RECEP] ${codigo} → CM3 → "${matchCantCM3[1]}" → Cant: ${cantidad}`);
-                    } else if (matchCant) {
-                        cantidad = parseInt(matchCant[1]);
-                        console.log(`   [RECEP] ${codigo} → Cant. → ${cantidad}`);
-                    } else if (matchNumero) {
-                        const num = parseInt(matchNumero[1]);
-                        if (num > 0 && num < 1000) {
-                            cantidad = num;
-                            console.log(`   [RECEP] ${codigo} → Número → ${cantidad}`);
+                    const matchCantidad = contexto.match(/CM3\s+(\d{1,3})\s+\d+\.\d{2}/i);
+                    
+                    if (matchCantidad) {
+                        cantidad = parseInt(matchCantidad[1]);
+                        console.log(`   [RECEP] ${codigo} → CM3 → Cant: ${cantidad}`);
+                    } else {
+                        // Fallback: buscar cualquier número de 1-3 dígitos después de CM3
+                        const matchSimple = contexto.match(/CM3\s+(\d{1,3})\b/i);
+                        if (matchSimple) {
+                            cantidad = parseInt(matchSimple[1]);
+                            console.log(`   [RECEP] ${codigo} → CM3 (simple) → Cant: ${cantidad}`);
                         }
                     }
 
