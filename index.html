@@ -1272,23 +1272,38 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
                         const despuesUM = contexto.substring(matchUM.index + matchUM[0].length, matchUM.index + matchUM[0].length + 80);
                         console.log(`   Después de U/M: "${despuesUM.substring(0, 50)}"`);
                         
-                        // Buscar TODOS los números (con o sin decimales)
-                        const todosLosNumeros = [...despuesUM.matchAll(/(\d+)(?:\.(\d+))?/g)];
-                        console.log(`   Números encontrados: ${todosLosNumeros.map(m => m[0]).join(', ')}`);
+                        // Buscar TODOS los números enteros (no parte de decimales)
+                        const todosLosNumeros = [...despuesUM.matchAll(/\b(\d+)\b(?!\.\d)/g)];
+                        console.log(`   Números enteros encontrados: ${todosLosNumeros.map(m => m[1]).join(', ')}`);
                         
-                        // Filtrar: solo números ENTEROS (sin decimales) y PEQUEÑOS (1-99)
-                        const candidatos = todosLosNumeros
-                            .filter(m => !m[2]) // Sin parte decimal
-                            .map(m => parseInt(m[1]))
-                            .filter(n => n >= 1 && n <= 99); // Cantidades típicas
+                        // Filtrar candidatos: 
+                        // - Entre 1 y 500 (para permitir cantidades grandes como 120, 180, 240)
+                        // - Excluir 11 y 21 (porcentajes de bonificación e IVA típicos)
+                        // - Excluir 0
+                        const numeros = todosLosNumeros.map(m => parseInt(m[1]));
+                        const candidatos = numeros.filter(n => n >= 1 && n <= 500 && n !== 11 && n !== 21 && n !== 0);
                         
-                        console.log(`   Candidatos (enteros 1-99): ${candidatos.join(', ')}`);
+                        console.log(`   Candidatos válidos (1-500, sin 0,11,21): ${candidatos.join(', ')}`);
                         
                         if (candidatos.length > 0) {
-                            cantidad = candidatos[0];
-                            console.log(`   ✅ CANTIDAD SELECCIONADA: ${cantidad}`);
+                            // Si hay solo un candidato, tomarlo
+                            // Si hay varios, tomar el que NO sea 1 (evitar Bto), salvo que sea el único
+                            if (candidatos.length === 1) {
+                                cantidad = candidatos[0];
+                                console.log(`   ✅ Único candidato: ${cantidad}`);
+                            } else {
+                                // Preferir números mayores a 1
+                                const mayoresA1 = candidatos.filter(n => n > 1);
+                                if (mayoresA1.length > 0) {
+                                    cantidad = mayoresA1[0];
+                                    console.log(`   ✅ Primer candidato > 1: ${cantidad}`);
+                                } else {
+                                    cantidad = candidatos[0];
+                                    console.log(`   ✅ Tomando el 1: ${cantidad}`);
+                                }
+                            }
                         } else {
-                            console.log(`   ❌ No hay números enteros pequeños (1-99)`);
+                            console.log(`   ❌ No hay candidatos válidos`);
                         }
                     } else {
                         console.log(`   ❌ No se encontró U/M en el contexto`);
