@@ -1252,33 +1252,17 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
                     const contexto = texto.substring(posicion, Math.min(texto.length, posicion + 200));
                     let cantidad = 0;
 
-                    // NUEVA ESTRATEGIA: Buscar CM3 y extraer TODOS los números cercanos
-                    // Tomar el número MÁS PEQUEÑO que sea razonable para una cantidad
+                    // USAR EL MISMO PATRÓN QUE EN ORDEN DE COMPRA
+                    // Estructura: Código ... Bto Cont U/M Cant. Costo
+                    // Buscar U/M y tomar el número que le sigue
+                    const matchCant = contexto.match(/(GR|CM3|KGR?|LTS?|CU)\s+(\d+[\.,]?\d*)/i);
                     
-                    const matchCM3 = contexto.match(/CM3/i);
-                    
-                    if (matchCM3) {
-                        // Extraer contexto después de CM3 (siguientes 100 caracteres)
-                        const despuesCM3 = contexto.substring(matchCM3.index + 3, matchCM3.index + 103);
-                        
-                        // Encontrar TODOS los números en ese contexto (incluyendo decimales)
-                        const todosLosMatches = [...despuesCM3.matchAll(/(\d+)(?:\.(\d+))?/g)];
-                        
-                        // Filtrar solo números ENTEROS (sin parte decimal)
-                        const numerosEnteros = todosLosMatches
-                            .filter(match => !match[2]) // No tiene parte decimal
-                            .map(match => parseInt(match[1]))
-                            .filter(n => n > 0 && n <= 500); // Rango razonable para cantidades
-                        
-                        if (numerosEnteros.length > 0) {
-                            // Tomar el PRIMER número entero razonable
-                            cantidad = numerosEnteros[0];
-                            console.log(`   [RECEP] ${codigo} → CM3 → Números enteros: [${numerosEnteros.join(', ')}] → Cant: ${cantidad}`);
-                        } else {
-                            console.log(`   ⚠️ [RECEP] ${codigo} → No hay números enteros razonables después de CM3`);
-                        }
+                    if (matchCant) {
+                        const valorStr = matchCant[2].replace(',', '.');
+                        cantidad = Math.floor(parseFloat(valorStr));
+                        console.log(`   [RECEP] ${codigo} → ${matchCant[1]} → Cant: ${cantidad}`);
                     } else {
-                        console.log(`   ⚠️ [RECEP] ${codigo} → No se encontró CM3`);
+                        console.log(`   ⚠️ [RECEP] ${codigo} → No se encontró patrón U/M + Cantidad`);
                     }
 
                     // Buscar producto en la base de datos
