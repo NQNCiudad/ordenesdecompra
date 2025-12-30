@@ -1126,11 +1126,14 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
                     let cantidad = 0;
                     
                     if (tipo === '030') {
-                        // Para 030: buscar patrón "Bto Cont. U/M"
-                        const matchBto = contexto.match(/(\d+)\s+\d+[\.,]?\d*\s+(GR|CM3|KGR?|LTS?|CU)\b/i);
-                        if (matchBto) {
-                            cantidad = parseInt(matchBto[1]);
-                            console.log(`   [030] ${codigo} → Bto: ${cantidad}`);
+                        // Para 030: buscar patrón "U/M [espacio] Cantidad"
+                        // La estructura es: Bto Cont. U/M Cant. Costo
+                        // Necesitamos tomar el número DESPUÉS de U/M, no antes
+                        const matchCant = contexto.match(/(GR|CM3|KGR?|LTS?|CU)\s+(\d+[\.,]?\d*)/i);
+                        if (matchCant) {
+                            const valorStr = matchCant[2].replace(',', '.');
+                            cantidad = Math.floor(parseFloat(valorStr));
+                            console.log(`   [030] ${codigo} → ${matchCant[1]} → Cant: ${cantidad}`);
                         }
                     } else if (tipo === '005') {
                         // Para 005 (BEBIDAS): buscar "CM3" seguido de cantidad con formato X.XX
