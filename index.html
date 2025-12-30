@@ -1225,9 +1225,11 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
                 const regexCodigo = /\b(\d{7})\b/gm;
                 let match;
                 const codigosEncontrados = [];
+                const todosLosCodigos7Digitos = [];
 
                 while ((match = regexCodigo.exec(texto)) !== null) {
                     const codigo = match[1];
+                    todosLosCodigos7Digitos.push(codigo);
                     
                     // Verificar que el código existe en nuestra base de datos
                     const producto = productos.find(p => p.codigo === codigo);
@@ -1236,10 +1238,15 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
                             codigo: codigo,
                             posicion: match.index
                         });
+                        console.log(`   ✓ Código válido: ${codigo} → ${producto.descripcion.substring(0, 40)}`);
+                    } else if (!producto) {
+                        console.log(`   ⚠️ Código NO en BD: ${codigo}`);
                     }
                 }
 
-                console.log(`🔍 Códigos de productos detectados: ${codigosEncontrados.length}`);
+                console.log(`🔍 Total códigos de 7 dígitos encontrados en PDF: ${todosLosCodigos7Digitos.length}`);
+                console.log(`   Primeros 10: ${todosLosCodigos7Digitos.slice(0, 10).join(', ')}`);
+                console.log(`✅ Códigos válidos (en BD): ${codigosEncontrados.length}`);
                 console.log('');
 
                 // Procesar cada código encontrado
@@ -1248,21 +1255,43 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
                         continue;
                     }
 
-                    // Extraer contexto hacia adelante (200 caracteres)
-                    const contexto = texto.substring(posicion, Math.min(texto.length, posicion + 200));
+                    // Extraer contexto hacia adelante (120 caracteres)
+                    const contexto = texto.substring(posicion, Math.min(texto.length, posicion + 120));
                     let cantidad = 0;
 
-                    // USAR EL MISMO PATRÓN QUE EN ORDEN DE COMPRA
-                    // Estructura: Código ... Bto Cont U/M Cant. Costo
-                    // Buscar U/M y tomar el número que le sigue
-                    const matchCant = contexto.match(/(GR|CM3|KGR?|LTS?|CU)\s+(\d+[\.,]?\d*)/i);
+                    console.log(`\n🔍 [RECEP] Analizando código: ${codigo}`);
+                    console.log(`   Contexto: "${contexto.substring(0, 90)}"`);
+
+                    // Buscar U/M primero
+                    const matchUM = contexto.match(/\b(CU|GR|CM3|KGR?|LTS?)\b/i);
                     
-                    if (matchCant) {
-                        const valorStr = matchCant[2].replace(',', '.');
-                        cantidad = Math.floor(parseFloat(valorStr));
-                        console.log(`   [RECEP] ${codigo} → ${matchCant[1]} → Cant: ${cantidad}`);
+                    if (matchUM) {
+                        console.log(`   ✓ U/M encontrado: ${matchUM[1]} en posición ${matchUM.index}`);
+                        
+                        // Extraer texto después de U/M (siguientes 80 caracteres)
+                        const despuesUM = contexto.substring(matchUM.index + matchUM[0].length, matchUM.index + matchUM[0].length + 80);
+                        console.log(`   Después de U/M: "${despuesUM.substring(0, 50)}"`);
+                        
+                        // Buscar TODOS los números (con o sin decimales)
+                        const todosLosNumeros = [...despuesUM.matchAll(/(\d+)(?:\.(\d+))?/g)];
+                        console.log(`   Números encontrados: ${todosLosNumeros.map(m => m[0]).join(', ')}`);
+                        
+                        // Filtrar: solo números ENTEROS (sin decimales) y PEQUEÑOS (1-99)
+                        const candidatos = todosLosNumeros
+                            .filter(m => !m[2]) // Sin parte decimal
+                            .map(m => parseInt(m[1]))
+                            .filter(n => n >= 1 && n <= 99); // Cantidades típicas
+                        
+                        console.log(`   Candidatos (enteros 1-99): ${candidatos.join(', ')}`);
+                        
+                        if (candidatos.length > 0) {
+                            cantidad = candidatos[0];
+                            console.log(`   ✅ CANTIDAD SELECCIONADA: ${cantidad}`);
+                        } else {
+                            console.log(`   ❌ No hay números enteros pequeños (1-99)`);
+                        }
                     } else {
-                        console.log(`   ⚠️ [RECEP] ${codigo} → No se encontró patrón U/M + Cantidad`);
+                        console.log(`   ❌ No se encontró U/M en el contexto`);
                     }
 
                     // Buscar producto en la base de datos
@@ -1273,13 +1302,15 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
                         
                         productosEncontrados.push({
                             ...producto,
-                            pedido: cantidad, // La cantidad en recepción
+                            pedido: cantidad,
                             recibido: 0,
                             nroOrden: nroOrden
                         });
-                        console.log(`✅ [RECEP] ${codigo} → Cant: ${cantidad} → ${producto.descripcion.substring(0,30)}...`);
+                        console.log(`✅✅✅ [RECEP] ${codigo} → AGREGADO con Cant: ${cantidad}`);
                     } else if (producto) {
-                        console.log(`⚠️ [RECEP] ${codigo} → Cant: 0 (no se pudo extraer cantidad)`);
+                        console.log(`⚠️ [RECEP] ${codigo} → Producto existe pero cant=0`);
+                    } else {
+                        console.log(`⚠️ [RECEP] ${codigo} → No existe en BD`);
                     }
                 }
 
