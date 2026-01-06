@@ -1064,11 +1064,32 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
                     sucursalDetectada = matchSucursal[1];
                 }
 
-                // NUEVO: Detectar número de orden
+                // NUEVO: Detectar número de orden - Manejar formato con columnas
                 let nroOrden = '';
-                const matchOrden = texto.match(/(?:N[uú]mero|Nro\.Expedici[oó]n|Expedici[oó]n|Nro\.Orden Compra)[:.\s]*(\d+)/i);
-                if (matchOrden) {
-                    nroOrden = matchOrden[1];
+                
+                // DEBUG: Mostrar primeras líneas del PDF
+                console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                console.log('🔍 DEBUG: Primeras 300 caracteres del PDF:');
+                console.log(texto.substring(0, 300));
+                console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                
+                // Buscar "Número:" seguido EVENTUALMENTE de 7-8 dígitos
+                // Permite texto entre medio (como "Fecha:") porque el PDF tiene columnas
+                const matchNumero = texto.match(/Número:[^0-9]*(\d{7,8})/i);
+                
+                if (matchNumero) {
+                    nroOrden = matchNumero[1];
+                    console.log(`✅ Número de OC CAPTURADO: ${nroOrden} (patrón flexible)`);
+                } else {
+                    console.log(`⚠️ NO se encontró patrón "Número: ... XXXXXXXX"`);
+                    // Fallback: buscar "Nro.Orden Compra" en recepción
+                    const matchOrden = texto.match(/Nro\.Orden Compra[:.\s]*(\d+)/i);
+                    if (matchOrden) {
+                        nroOrden = matchOrden[1];
+                        console.log(`✅ Número de OC CAPTURADO (fallback): ${nroOrden}`);
+                    } else {
+                        console.log(`❌ No se pudo detectar número de OC con ningún patrón`);
+                    }
                 }
 
                 console.log('============================================');
@@ -1077,6 +1098,20 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
                 console.log('Sucursal detectada:', sucursalDetectada);
                 console.log('N° Orden detectado:', nroOrden);
                 console.log('Caracteres totales:', texto.length);
+                console.log('');
+                
+                // DEBUG MANUAL: Buscar códigos problemáticos en TODO el texto
+                console.log('🔍 BÚSQUEDA MANUAL de códigos reportados:');
+                const codigosProblematicos = ['1557040', '1013178', '1957338'];
+                codigosProblematicos.forEach(cod => {
+                    if (texto.includes(cod)) {
+                        const pos = texto.indexOf(cod);
+                        const contexto = texto.substring(Math.max(0, pos - 20), pos + 40);
+                        console.log(`   ✅ "${cod}" aparece en PDF → "...${contexto}..."`);
+                    } else {
+                        console.log(`   ❌ "${cod}" NO aparece en PDF`);
+                    }
+                });
                 console.log('');
 
                 let productosDetectados = 0;
@@ -1113,6 +1148,28 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
                 console.log(`   TOTAL: ${todosLosCodigos.length}`);
                 console.log('');
                 
+                // DEBUG DETALLADO: Mostrar TODOS los códigos 005 encontrados
+                const codigos005 = todosLosCodigos.filter(c => c.tipo === '005');
+                if (codigos005.length > 0) {
+                    console.log('📋 TODOS los códigos "005" detectados en PDF:');
+                    codigos005.forEach((c, idx) => {
+                        const enBD = productos.find(p => p.codigo === c.codigo);
+                        console.log(`   ${idx + 1}. 005 ${c.codigo} ${enBD ? '✅ EN BD' : '❌ NO EN BD'} ${enBD ? '→ ' + enBD.descripcion.substring(0, 30) : ''}`);
+                    });
+                    console.log('');
+                    console.log(`🔍 Buscando específicamente: 1557040, 1013178, 1957338`);
+                    const buscar = ['1557040', '1013178', '1957338'];
+                    buscar.forEach(cod => {
+                        const encontrado = codigos005.find(c => c.codigo === cod);
+                        if (encontrado) {
+                            console.log(`   ✅ ${cod} SÍ fue detectado en PDF`);
+                        } else {
+                            console.log(`   ❌ ${cod} NO fue detectado en PDF`);
+                        }
+                    });
+                    console.log('');
+                }
+                
                 // Procesar cada código encontrado
                 for (const {codigo, posicion, tipo} of todosLosCodigos) {
                     if (productosYaAgregados.has(codigo)) {
@@ -1126,22 +1183,38 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
                     let cantidad = 0;
                     
                     if (tipo === '030') {
-                        // Para 030: buscar patrón "U/M [espacio] Cantidad"
+                        // Para 030 (LÁCTEOS): buscar patrón "U/M [espacio] Cantidad"
                         // La estructura es: Bto Cont. U/M Cant. Costo
                         // Necesitamos tomar el número DESPUÉS de U/M, no antes
+                        // MANTENER DECIMALES para productos en KG
                         const matchCant = contexto.match(/(GR|CM3|KGR?|LTS?|CU)\s+(\d+[\.,]?\d*)/i);
                         if (matchCant) {
                             const valorStr = matchCant[2].replace(',', '.');
-                            cantidad = parseFloat(valorStr); // Mantener decimales para kg
-                            console.log(`   [030] ${codigo} → ${matchCant[1]} → Cant: ${cantidad}`);
+                            const valor = parseFloat(valorStr);
+                            
+                            // Validar que sea un rango razonable para cantidad (no precio)
+                            if (valor >= 0.1 && valor <= 500) {
+                                cantidad = valor; // MANTENER DECIMALES (5.8, 6.0, etc)
+                                console.log(`   [030] ${codigo} → ${matchCant[1]} → Cant: ${cantidad}`);
+                            } else {
+                                console.log(`   ⚠️ [030] ${codigo} → Valor ${valor} fuera de rango (0.1-500), probablemente es precio`);
+                            }
                         }
                     } else if (tipo === '005') {
                         // Para 005 (BEBIDAS): buscar "CM3" seguido de cantidad con formato X.XX
+                        // REDONDEAR A ENTERO porque las bebidas siempre son unidades completas
                         const matchCant = contexto.match(/CM3\s+([\d]+[\.,]?\d*)/i);
                         if (matchCant) {
                             const valorStr = matchCant[1].replace(',', '.');
-                            cantidad = parseFloat(valorStr); // Mantener decimales
-                            console.log(`   [005] ${codigo} → CM3 → "${matchCant[1]}" → Cant: ${cantidad}`);
+                            const valor = parseFloat(valorStr);
+                            
+                            // Validar rango razonable para cantidad
+                            if (valor >= 0.1 && valor <= 500) {
+                                cantidad = Math.floor(valor); // REDONDEAR COMO ANTES (18.0 → 18)
+                                console.log(`   [005] ${codigo} → CM3 → "${matchCant[1]}" → Cant: ${cantidad}`);
+                            } else {
+                                console.log(`   ⚠️ [005] ${codigo} → Valor ${valor} fuera de rango (0.1-500), probablemente es precio`);
+                            }
                         }
                     }
 
@@ -1264,8 +1337,8 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
 
                     // PATRÓN BASADO EN ESTRUCTURA DE COLUMNAS DEL PDF
                     // Estructura: ... Bto Cont U/M Cant Costo %Bon %Iva
-                    // Ejemplo: "... 1   159  GR  24   739.56  11.00 21.00"
-                    // Buscamos: U/M seguido de hasta 3 números, queremos el primero que sea < 1000
+                    // Ejemplo: "... 1   330  CM3  12   2858.00  0.00 21.00"
+                    // IMPORTANTE: La cantidad siempre es pequeña (1-500), el costo es grande (>1000)
                     
                     const matchUM = contexto.match(/\b(CU|GR|CM3|KGR?|LTS?)\b/i);
                     
@@ -1274,25 +1347,29 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
                         
                         // Extraer texto DESPUÉS de U/M
                         const despuesUM = contexto.substring(matchUM.index + matchUM[0].length);
-                        console.log(`   Después U/M: "${despuesUM.substring(0, 60)}"`);
+                        console.log(`   Después U/M: "${despuesUM.substring(0, 80)}"`);
                         
-                        // Buscar cantidad (puede tener decimales para productos en KG)
-                        // Captura números enteros (18) o decimales (5.8, 6.0)
-                        const matchCant = despuesUM.match(/\s+(\d{1,3}(?:\.\d{1,2})?)/);
+                        // ESTRATEGIA: Buscar SOLO números pequeños (para evitar costos)
+                        // Captura: 12, 5.8, 24 pero NO 2858.00, 5960.00
                         
-                        if (matchCant) {
-                            const num = parseFloat(matchCant[1]);
-                            console.log(`   Primer número después de U/M: ${num}`);
-                            
-                            // Tomar el número si es razonable (0.1-999)
-                            if (num >= 0.1 && num <= 999) {
+                        // Patrón: número de 1-3 dígitos con máximo 2 decimales
+                        // CLAVE: Debe tener espacio después (no ser parte de 2858.00)
+                        const matches = despuesUM.matchAll(/\s+(\d{1,3}(?:\.\d{1,2})?)\s/g);
+                        const numerosEncontrados = Array.from(matches).map(m => parseFloat(m[1]));
+                        
+                        console.log(`   Números encontrados después de U/M: ${numerosEncontrados.join(', ')}`);
+                        
+                        // Tomar el PRIMER número razonable (1-500)
+                        for (const num of numerosEncontrados) {
+                            if (num >= 0.1 && num <= 500) {
                                 cantidad = num;
                                 console.log(`✅ [RECEP] ${codigo} → ${matchUM[1]} ${cantidad}`);
-                            } else {
-                                console.log(`❌ [RECEP] ${codigo} → ${num} fuera de rango (0.1-999)`);
+                                break;
                             }
-                        } else {
-                            console.log(`❌ [RECEP] ${codigo} → No se encontró número después de U/M`);
+                        }
+                        
+                        if (cantidad === 0) {
+                            console.log(`❌ [RECEP] ${codigo} → No se encontró cantidad válida (encontrados: ${numerosEncontrados.join(', ')})`);
                         }
                     } else {
                         console.log(`❌ [RECEP] ${codigo} → No se encontró U/M`);
@@ -1427,6 +1504,23 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
                     
                     // NUEVO: Usar función especial para recepciones
                     const resultado = parsearPDFRecepcion(texto);
+
+                    // VALIDAR NÚMERO DE OC - asegurar que coincide
+                    if (resultado.nroOrden && nroOrdenPDF && resultado.nroOrden !== nroOrdenPDF) {
+                        const confirmar = confirm(
+                            `⚠️ ADVERTENCIA: El número de OC no coincide\n\n` +
+                            `OC cargada: ${nroOrdenPDF}\n` +
+                            `Recepción: ${resultado.nroOrden}\n\n` +
+                            `¿Desea continuar de todos modos?`
+                        );
+                        if (!confirmar) {
+                            setCargandoPDFRecepcion(false);
+                            setErrorPDFRecepcion('Carga cancelada - Números de OC no coinciden');
+                            return;
+                        }
+                    } else if (resultado.nroOrden && nroOrdenPDF && resultado.nroOrden === nroOrdenPDF) {
+                        console.log(`✅ Validación: Número de OC coincide (${nroOrdenPDF})`);
+                    }
 
                     if (resultado.productos.length === 0) {
                         setErrorPDFRecepcion('No se encontraron productos en el PDF de recepción');
@@ -2087,6 +2181,17 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
                                 {errorPDF && (
                                     <div className="mt-2 p-3 bg-red-100 border border-red-300 rounded text-red-700 text-sm">
                                         <i className="fas fa-exclamation-circle"></i> {errorPDF}
+                                    </div>
+                                )}
+                                {nroOrdenPDF && (
+                                    <div className="mt-2 p-3 bg-indigo-100 border-2 border-indigo-400 rounded-lg">
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <span className="text-sm font-semibold text-indigo-700">OC Cargada:</span>
+                                                <span className="ml-2 text-lg font-bold text-indigo-900"># {nroOrdenPDF}</span>
+                                            </div>
+                                            <i className="fas fa-check-circle text-indigo-600 text-xl"></i>
+                                        </div>
                                     </div>
                                 )}
                             </div>
