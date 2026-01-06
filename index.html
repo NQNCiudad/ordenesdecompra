@@ -971,10 +971,6 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
         const productos = parseProductos();
         const proveedores = ['QUILMES', 'CCU', 'COCA COLA', 'DANONE', 'MASTELLONE'];
         const sucursales = ['006', '068', '162', '225', '226', '229', '232', '233', '235', '236', '237', '239', '240', '248', '254'];
-        
-        const normalizarProveedor = (proveedor) => {
-            return proveedor.toUpperCase().trim();
-        };
 
         function App() {
             const [proveedor, setProveedor] = useState(() => localStorage.getItem('proveedor') || '');
@@ -995,25 +991,9 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
             const [mostrarModalRecepcion, setMostrarModalRecepcion] = useState(false);
             const [recepcionPDF, setRecepcionPDF] = useState([]);
 
-            useEffect(() => {
-                localStorage.setItem('proveedor', proveedor);
-                if (proveedor) mostrarMensajeGuardado();
-            }, [proveedor]);
-
-            useEffect(() => {
-                localStorage.setItem('sucursal', sucursal);
-                if (sucursal) mostrarMensajeGuardado();
-            }, [sucursal]);
-
-            useEffect(() => {
-                localStorage.setItem('productosSeleccionados', JSON.stringify(productosSeleccionados));
-                if (productosSeleccionados.length > 0) mostrarMensajeGuardado();
-            }, [productosSeleccionados]);
-
-            const mostrarMensajeGuardado = () => {
-                setMensajeGuardado('✅ Datos guardados');
-                setTimeout(() => setMensajeGuardado(''), 2000);
-            };
+            useEffect(() => { localStorage.setItem('proveedor', proveedor); }, [proveedor]);
+            useEffect(() => { localStorage.setItem('sucursal', sucursal); }, [sucursal]);
+            useEffect(() => { localStorage.setItem('productosSeleccionados', JSON.stringify(productosSeleccionados)); }, [productosSeleccionados]);
 
             const extractTextFromPDF = async (file) => {
                 const arrayBuffer = await file.arrayBuffer();
@@ -1030,341 +1010,200 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
             const parsearPDF = (texto) => {
                 const productosEncontrados = [];
                 const productosYaAgregados = new Set();
-                let proveedorDetectado = '';
-                let sucursalDetectada = '';
+                let nroOrden = (texto.match(/Número:[^0-9]*(\d+)/i) || texto.match(/Nro\.Orden Compra[:.\s]*(\d+)/i) || ["", ""])[1];
+                let sucursalDetectada = (texto.match(/\[(\d{3})\]/) || ["", ""])[1];
 
-                const matchSucursal = texto.match(/\[(\d{3})\]/);
-                if (matchSucursal && sucursales.includes(matchSucursal[1])) sucursalDetectada = matchSucursal[1];
-
-                const matchNumero = texto.match(/Número:[^0-9]*(\d{7,8})/i) || texto.match(/Nro\.Orden Compra[:.\s]*(\d+)/i);
-                const nroOrden = matchNumero ? matchNumero[1] : '';
-
-                // Búsqueda de productos con patrones 030/005
-                const regex030 = /\b030\s+(\d{7})\b/g;
-                const regex005 = /\b005\s+(\d{7})\b/g;
+                const regexCodigo = /\b(030|005)\s+(\d{7})\b/g;
                 let match;
-
-                const procesarMatch = (m, tipo) => {
-                    const codigo = m[1];
-                    if (productosYaAgregados.has(codigo)) return;
-                    const producto = productos.find(p => p.codigo === codigo);
-                    if (producto) {
-                        const contexto = texto.substring(m.index, m.index + 150);
-                        const matchCant = contexto.match(/(?:GR|CM3|KGR?|LTS?|CU|UN)\s+(\d+[\.,]?\d*)/i);
-                        let cantidad = 0;
-                        if (matchCant) {
-                            cantidad = parseFloat(matchCant[1].replace(',', '.'));
-                        }
+                while ((match = regexCodigo.exec(texto)) !== null) {
+                    const codigo = match[2];
+                    if (productosYaAgregados.has(codigo)) continue;
+                    const pBase = productos.find(p => p.codigo === codigo);
+                    if (pBase) {
+                        const contexto = texto.substring(match.index, match.index + 200);
+                        const matchCant = contexto.match(/(?:CM3|GR|LTS|CU|UN|KGR)\s+(\d+(?:[\.,]\d+)?)/i);
+                        const cantidad = matchCant ? parseFloat(matchCant[1].replace(',', '.')) : 0;
                         productosYaAgregados.add(codigo);
-                        productosEncontrados.push({...producto, pedido: cantidad, recibido: 0, nroOrden: nroOrden});
-                        proveedorDetectado = producto.proveedor;
+                        productosEncontrados.push({...pBase, pedido: cantidad, recibido: 0, nroOrden});
                     }
-                };
-
-                while ((match = regex030.exec(texto)) !== null) procesarMatch(match, '030');
-                while ((match = regex005.exec(texto)) !== null) procesarMatch(match, '005');
-
-                return { proveedor: proveedorDetectado, sucursal: sucursalDetectada, nroOrden, productos: productosEncontrados };
+                }
+                return { proveedor: productosEncontrados[0]?.proveedor || '', sucursal: sucursalDetectada, nroOrden, productos: productosEncontrados };
             };
 
-            // NUEVA FUNCIÓN CORREGIDA: Parsear PDF de RECEPCIÓN
+            // FUNCIÓN CORREGIDA PARA RECEPCIÓN: Captura "Cant." a la izquierda del costo
             const parsearPDFRecepcion = (texto) => {
-                const productosEncontrados = [];
-                const productosYaAgregados = new Set();
+                const encontrados = [];
+                const nroOrden = (texto.match(/(?:Nro\.Orden Compra|Orden Compra)[:.\s]*(\d+)/i) || ["", ""])[1];
 
-                // Detectar N° de Orden
-                const matchOrden = texto.match(/(?:Nro\.Orden Compra|Orden Compra|N\.?Orden)[:.\s]*(\d+)/i);
-                const nroOrden = matchOrden ? matchOrden[1] : '';
-
-                // Buscar códigos de 7 dígitos
                 const regexCodigo = /\b(\d{7})\b/g;
                 let match;
-
                 while ((match = regexCodigo.exec(texto)) !== null) {
                     const codigo = match[1];
-                    const productoBase = productos.find(p => p.codigo === codigo);
-
-                    if (productoBase && !productosYaAgregados.has(codigo)) {
-                        const contexto = texto.substring(match.index, match.index + 200);
+                    const pBase = productos.find(p => p.codigo === codigo);
+                    if (pBase) {
+                        const contexto = texto.substring(match.index, match.index + 250);
+                        // Buscamos la U/M y capturamos estrictamente el primer número que le sigue (Columna Cant.)
+                        const regexCantCorrecta = /(?:CM3|GR|CU|KGR|LTS|UN)\s+(\d+(?:[\.,]\d+)?)/i;
+                        const matchCant = contexto.match(regexCantCorrecta);
                         
-                        // CORRECCIÓN CLAVE: Buscamos el número que viene DESPUÉS de la unidad de medida
-                        // Esto ignora el 11.70 (Bonif) porque este suele estar antes de la unidad.
-                        const regexCantPostUM = /(?:CM3|GR|CU|KGR|LTS|UN)\s+(\d+(?:[\.,]\d+)?)/i;
-                        const matchCant = contexto.match(regexCantPostUM);
-
                         if (matchCant) {
                             const cantidad = parseFloat(matchCant[1].replace(',', '.'));
-                            if (!isNaN(cantidad) && cantidad > 0) {
-                                productosYaAgregados.add(codigo);
-                                productosEncontrados.push({
-                                    ...productoBase,
-                                    pedido: cantidad, 
-                                    recibido: 0,
-                                    nroOrden: nroOrden
-                                });
-                            }
+                            encontrados.push({...pBase, pedido: cantidad, recibido: 0, nroOrden});
                         }
                     }
                 }
-
-                return { nroOrden, productos: productosEncontrados, esRecepcion: true };
+                return { nroOrden, productos: encontrados };
             };
 
-            const handleCargarPDF = async (event) => {
-                const file = event.target.files[0];
+            const handleCargarPDF = async (e) => {
+                const file = e.target.files[0];
                 if (!file) return;
                 setCargandoPDF(true);
-                setErrorPDF('');
                 try {
                     const texto = await extractTextFromPDF(file);
-                    const resultado = parsearPDF(texto);
-                    if (!resultado.sucursal) { setErrorPDF('No se detectó sucursal'); }
-                    else if (resultado.productos.length === 0) { setErrorPDF('No se encontraron productos'); }
-                    else {
-                        setProductosPDF(resultado.productos);
-                        setNroOrdenPDF(resultado.nroOrden);
-                        setProveedor(resultado.proveedor || 'MIXTO');
-                        setSucursal(resultado.sucursal);
-                        setMostrarModalPDF(true);
-                    }
-                } catch (e) { setErrorPDF('Error: ' + e.message); }
-                finally { setCargandoPDF(false); event.target.value = ''; }
+                    const res = parsearPDF(texto);
+                    setProductosPDF(res.productos);
+                    setNroOrdenPDF(res.nroOrden);
+                    setProveedor(res.proveedor);
+                    setSucursal(res.sucursal);
+                    setMostrarModalPDF(true);
+                } catch (err) { setErrorPDF("Error al leer PDF"); }
+                finally { setCargandoPDF(false); e.target.value = ''; }
             };
 
-            const handleCargarPDFRecepcion = async (event) => {
-                const file = event.target.files[0];
+            const handleCargarPDFRecepcion = async (e) => {
+                const file = e.target.files[0];
                 if (!file) return;
                 setCargandoPDFRecepcion(true);
-                setErrorPDFRecepcion('');
                 try {
                     const texto = await extractTextFromPDF(file);
-                    const resultado = parsearPDFRecepcion(texto);
-                    
-                    if (resultado.productos.length === 0) {
-                        setErrorPDFRecepcion('No se encontraron productos en la recepción');
-                    } else {
-                        // Match con productos en pantalla
-                        const conMatch = resultado.productos
-                            .map(prodRec => {
-                                const existente = productosSeleccionados.find(p => p.codigo === prodRec.codigo);
-                                return existente ? { ...prodRec, pedidoOriginal: existente.pedido, nroOrdenOriginal: existente.nroOrden } : null;
-                            })
-                            .filter(p => p !== null);
-
-                        if (conMatch.length === 0) {
-                            setErrorPDFRecepcion('Los productos del PDF no están en la orden actual');
-                        } else {
-                            setRecepcionPDF(conMatch);
-                            setMostrarModalRecepcion(true);
-                        }
-                    }
-                } catch (e) { setErrorPDFRecepcion('Error: ' + e.message); }
-                finally { setCargandoPDFRecepcion(false); event.target.value = ''; }
+                    const res = parsearPDFRecepcion(texto);
+                    const conMatch = res.productos.map(pr => {
+                        const ex = productosSeleccionados.find(p => p.codigo === pr.codigo);
+                        return ex ? {...pr, pedidoOriginal: ex.pedido} : null;
+                    }).filter(x => x);
+                    setRecepcionPDF(conMatch);
+                    setMostrarModalRecepcion(true);
+                } catch (err) { setErrorPDFRecepcion("Error al leer recepción"); }
+                finally { setCargandoPDFRecepcion(false); e.target.value = ''; }
             };
 
-            const confirmarCargaPDF = () => {
-                setProductosSeleccionados(productosPDF);
-                setMostrarModalPDF(false);
-            };
-
+            const confirmarCargaPDF = () => { setProductosSeleccionados(productosPDF); setMostrarModalPDF(false); };
             const confirmarRecepcionPDF = () => {
                 setProductosSeleccionados(productosSeleccionados.map(p => {
-                    const rec = recepcionPDF.find(r => r.codigo === p.codigo);
-                    return rec ? { ...p, recibido: rec.pedido } : p;
+                    const r = recepcionPDF.find(re => re.codigo === p.codigo);
+                    return r ? {...p, recibido: r.pedido} : p;
                 }));
                 setMostrarModalRecepcion(false);
             };
 
-            const actualizarCantidad = (codigo, nroOrden, campo, valor) => {
-                setProductosSeleccionados(productosSeleccionados.map(p => 
-                    (p.codigo === codigo && p.nroOrden === nroOrden) ? { ...p, [campo]: parseFloat(valor) || 0 } : p
-                ));
+            const actualizarCantidad = (cod, ord, field, val) => {
+                setProductosSeleccionados(productosSeleccionados.map(p => (p.codigo === cod && p.nroOrden === ord) ? {...p, [field]: parseFloat(val) || 0} : p));
             };
-
-            const eliminarProducto = (codigo, nroOrden) => {
-                setProductosSeleccionados(productosSeleccionados.filter(p => !(p.codigo === codigo && p.nroOrden === nroOrden)));
-            };
-
-            const calcularDiferencia = (p, r) => r - p;
-            const calcularPorcentaje = (p, r) => p === 0 ? 100 : Math.round((r / p) * 100);
-            const formatearNumero = (num) => Number.isInteger(num) ? num : Math.round(num * 100) / 100;
-
-            const exportarPDF = () => {
-                const { jsPDF } = window.jspdf;
-                const doc = new jsPDF('l', 'mm', 'a4');
-                doc.text('CONTROL DE ÓRDENES DE COMPRA', 148, 15, { align: 'center' });
-                const rows = productosSeleccionados.map(p => [
-                    p.nroOrden || '-', p.codigo, p.descripcion, p.marca, p.bulto, p.pedido, p.recibido, 
-                    calcularDiferencia(p.pedido, p.recibido), (calcularDiferencia(p.pedido, p.recibido) >= 0 ? 'Completo' : 'Faltante'), 
-                    calcularPorcentaje(p.pedido, p.recibido) + '%'
-                ]);
-                doc.autoTable({ head: [['N Orden', 'Codigo', 'Descripcion', 'Marca', 'Bulto', 'Pedido', 'Recibido', 'Dif', 'Estado', '%']], body: rows, startY: 25 });
-                doc.save(`orden_${proveedor}.pdf`);
-            };
-
-            const productosAgrupados = productosSeleccionados.reduce((acc, p) => {
-                const orden = p.nroOrden || 'MANUAL';
-                if (!acc[orden]) acc[orden] = [];
-                acc[orden].push(p);
-                return acc;
-            }, {});
 
             return (
-                <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 p-4 md:p-8 font-sans">
-                    <div className="max-w-7xl mx-auto">
-                        {mensajeGuardado && <div className="fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg z-50">{mensajeGuardado}</div>}
-                        
-                        {/* Modal Orden de Compra */}
-                        {mostrarModalPDF && (
-                            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                                <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[80vh] flex flex-col">
-                                    <div className="p-6 border-b bg-indigo-600 text-white rounded-t-xl">
-                                        <h2 className="text-xl font-bold">Confirmar Carga de Orden</h2>
-                                    </div>
-                                    <div className="p-6 overflow-y-auto">
-                                        <table className="w-full text-sm">
-                                            <thead><tr className="bg-gray-100"><th className="p-2 text-left">Código</th><th className="p-2 text-left">Descripción</th><th className="p-2 text-center">Cant. Pedida</th></tr></thead>
-                                            <tbody>{productosPDF.map((p, i) => <tr key={i} className="border-b"><td className="p-2">{p.codigo}</td><td className="p-2">{p.descripcion}</td><td className="p-2 text-center font-bold">{p.pedido}</td></tr>)}</tbody>
-                                        </table>
-                                    </div>
-                                    <div className="p-4 border-t flex justify-end gap-3">
-                                        <button onClick={() => setMostrarModalPDF(false)} className="px-4 py-2 bg-gray-200 rounded-lg">Cancelar</button>
-                                        <button onClick={confirmarCargaPDF} className="px-4 py-2 bg-indigo-600 text-white rounded-lg">Confirmar</button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Modal Recepción */}
-                        {mostrarModalRecepcion && (
-                            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                                <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[80vh] flex flex-col">
-                                    <div className="p-6 border-b bg-green-600 text-white rounded-t-xl">
-                                        <h2 className="text-xl font-bold">Confirmar Recepción de Productos</h2>
-                                    </div>
-                                    <div className="p-6 overflow-y-auto">
-                                        <table className="w-full text-sm">
-                                            <thead><tr className="bg-gray-100"><th className="p-2 text-left">Código</th><th className="p-2 text-left">Descripción</th><th className="p-2 text-center">En Orden</th><th className="p-2 text-center">Recibido</th></tr></thead>
-                                            <tbody>{recepcionPDF.map((p, i) => <tr key={i} className="border-b"><td className="p-2">{p.codigo}</td><td className="p-2">{p.descripcion}</td><td className="p-2 text-center">{p.pedidoOriginal}</td><td className="p-2 text-center font-bold text-green-600">{p.pedido}</td></tr>)}</tbody>
-                                        </table>
-                                    </div>
-                                    <div className="p-4 border-t flex justify-end gap-3">
-                                        <button onClick={() => setMostrarModalRecepcion(false)} className="px-4 py-2 bg-gray-200 rounded-lg">Cancelar</button>
-                                        <button onClick={confirmarRecepcionPDF} className="px-4 py-2 bg-green-600 text-white rounded-lg">Actualizar Cantidades</button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        <div className="bg-white rounded-2xl shadow-xl p-6 mb-8 border border-indigo-100">
-                            <h1 className="text-3xl font-extrabold text-indigo-700 mb-6 flex items-center gap-3">
-                                <i className="fas fa-clipboard-check"></i> Control de Órdenes de Compra
+                <div className="min-h-screen bg-slate-50 p-4 md:p-8">
+                    <div className="max-w-6xl mx-auto">
+                        <div className="bg-white shadow-xl rounded-2xl p-6 mb-8 border border-slate-200">
+                            <h1 className="text-2xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+                                <i className="fas fa-file-invoice text-indigo-600"></i> Sistema de Control SAIEP
                             </h1>
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                                <div className="p-4 bg-indigo-50 rounded-xl border-2 border-indigo-100">
-                                    <h3 className="font-bold text-indigo-800 mb-3"><i className="fas fa-file-import mr-2"></i>Cargar Orden de Compra</h3>
-                                    <label className="flex flex-col items-center justify-center w-full h-24 border-2 border-indigo-300 border-dashed rounded-lg cursor-pointer hover:bg-indigo-100 transition-all">
-                                        <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                                            <i className="fas fa-cloud-upload-alt text-2xl text-indigo-500 mb-2"></i>
-                                            <p className="text-sm text-indigo-600">Subir PDF de Orden</p>
-                                        </div>
-                                        <input type="file" className="hidden" accept=".pdf" onChange={handleCargarPDF} disabled={cargandoPDF} />
-                                    </label>
-                                    {errorPDF && <p className="text-red-500 text-xs mt-2">{errorPDF}</p>}
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                                <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100">
+                                    <p className="text-sm font-bold text-indigo-800 mb-2">1. Cargar Orden (PDF)</p>
+                                    <input type="file" accept=".pdf" onChange={handleCargarPDF} className="text-xs w-full" />
                                 </div>
-
-                                <div className="p-4 bg-green-50 rounded-xl border-2 border-green-100">
-                                    <h3 className="font-bold text-green-800 mb-3"><i className="fas fa-truck-loading mr-2"></i>Cargar Recepción Física</h3>
-                                    <label className="flex flex-col items-center justify-center w-full h-24 border-2 border-green-300 border-dashed rounded-lg cursor-pointer hover:bg-green-100 transition-all">
-                                        <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                                            <i className="fas fa-file-invoice text-2xl text-green-500 mb-2"></i>
-                                            <p className="text-sm text-green-600">Subir PDF de Recepción</p>
-                                        </div>
-                                        <input type="file" className="hidden" accept=".pdf" onChange={handleCargarPDFRecepcion} disabled={cargandoPDFRecepcion} />
-                                    </label>
-                                    {errorPDFRecepcion && <p className="text-red-500 text-xs mt-2">{errorPDFRecepcion}</p>}
+                                <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-100">
+                                    <p className="text-sm font-bold text-emerald-800 mb-2">2. Cargar Recepción (PDF)</p>
+                                    <input type="file" accept=".pdf" onChange={handleCargarPDFRecepcion} className="text-xs w-full" />
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-bold text-gray-700 mb-1">Proveedor</label>
-                                    <select className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" value={proveedor} onChange={e => setProveedor(e.target.value)}>
-                                        <option value="">Seleccione...</option>
-                                        {proveedores.map(p => <option key={p} value={p}>{p}</option>)}
-                                    </select>
+                            <div className="flex gap-4">
+                                <div className="flex-1">
+                                    <label className="text-xs font-bold text-slate-500 uppercase">Proveedor</label>
+                                    <input className="w-full p-2 bg-slate-100 rounded border-none font-bold" value={proveedor} readOnly />
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-bold text-gray-700 mb-1">Sucursal</label>
-                                    <select className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" value={sucursal} onChange={e => setSucursal(e.target.value)}>
-                                        <option value="">Seleccione...</option>
-                                        {sucursales.map(s => <option key={s} value={s}>{s}</option>)}
-                                    </select>
+                                <div className="flex-1">
+                                    <label className="text-xs font-bold text-slate-500 uppercase">Sucursal</label>
+                                    <input className="w-full p-2 bg-slate-100 rounded border-none font-bold" value={sucursal} readOnly />
                                 </div>
                             </div>
                         </div>
 
                         {productosSeleccionados.length > 0 && (
-                            <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100">
-                                <div className="p-6 bg-gray-800 text-white flex justify-between items-center">
-                                    <h2 className="text-xl font-bold">Listado de Control</h2>
+                            <div className="bg-white shadow-xl rounded-2xl overflow-hidden border border-slate-200">
+                                <div className="bg-slate-800 p-4 text-white flex justify-between items-center">
+                                    <h2 className="font-bold">Listado de Control</h2>
+                                    <button onClick={() => setProductosSeleccionados([])} className="text-xs bg-slate-700 px-3 py-1 rounded hover:bg-red-600">Limpiar Todo</button>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm">
+                                        <thead className="bg-slate-50 border-b border-slate-200">
+                                            <tr>
+                                                <th className="p-4 text-left text-slate-600">Código / Descripción</th>
+                                                <th className="p-4 text-center text-slate-600">Pedido</th>
+                                                <th className="p-4 text-center text-slate-600">Recibido</th>
+                                                <th className="p-4 text-center text-slate-600">Diferencia</th>
+                                                <th className="p-4 text-center text-slate-600">Estado</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {productosSeleccionados.map(p => {
+                                                const dif = p.recibido - p.pedido;
+                                                return (
+                                                    <tr key={p.codigo} className="border-b border-slate-100 hover:bg-slate-50">
+                                                        <td className="p-4">
+                                                            <div className="font-bold">{p.codigo}</div>
+                                                            <div className="text-xs text-slate-500">{p.descripcion}</div>
+                                                        </td>
+                                                        <td className="p-4 text-center">
+                                                            <input type="number" className="w-16 p-1 border rounded text-center" value={p.pedido} onChange={e => actualizarCantidad(p.codigo, p.nroOrden, 'pedido', e.target.value)} />
+                                                        </td>
+                                                        <td className="p-4 text-center">
+                                                            <input type="number" className="w-20 p-1 border-2 border-indigo-400 rounded text-center font-bold" value={p.recibido} onChange={e => actualizarCantidad(p.codigo, p.nroOrden, 'recibido', e.target.value)} />
+                                                        </td>
+                                                        <td className={`p-4 text-center font-bold ${dif < 0 ? 'text-red-500' : 'text-emerald-500'}`}>
+                                                            {dif > 0 ? `+${dif}` : dif}
+                                                        </td>
+                                                        <td className="p-4 text-center">
+                                                            <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${dif >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                                                                {dif >= 0 ? 'COMPLETO' : 'FALTANTE'}
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Modales de confirmación simplificados */}
+                        {mostrarModalPDF && (
+                            <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center p-4 z-50">
+                                <div className="bg-white p-6 rounded-xl max-w-md w-full shadow-2xl">
+                                    <h3 className="font-bold mb-4">Confirmar carga de Orden #{nroOrdenPDF}</h3>
+                                    <p className="text-sm text-slate-500 mb-6">Se detectaron {productosPDF.length} productos. ¿Desea cargarlos?</p>
                                     <div className="flex gap-2">
-                                        <button onClick={exportarPDF} className="px-4 py-2 bg-red-500 hover:bg-red-600 rounded-lg transition-colors"><i className="fas fa-file-pdf mr-2"></i>PDF</button>
-                                        <button onClick={() => { if(confirm('¿Limpiar todo?')) setProductosSeleccionados([]); }} className="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg transition-colors"><i className="fas fa-trash"></i></button>
+                                        <button onClick={() => setMostrarModalPDF(false)} className="flex-1 p-2 bg-slate-100 rounded font-bold">Cancelar</button>
+                                        <button onClick={confirmarCargaPDF} className="flex-1 p-2 bg-indigo-600 text-white rounded font-bold">Confirmar</button>
                                     </div>
                                 </div>
+                            </div>
+                        )}
 
-                                <div className="p-6 overflow-x-auto">
-                                    {Object.keys(productosAgrupados).map(orden => (
-                                        <div key={orden} className="mb-8">
-                                            <div className="bg-indigo-50 p-3 rounded-t-xl border-x border-t border-indigo-100">
-                                                <h3 className="font-bold text-indigo-800">Orden: {orden}</h3>
-                                            </div>
-                                            <table className="w-full border-collapse">
-                                                <thead>
-                                                    <tr className="bg-indigo-600 text-white text-xs uppercase tracking-wider">
-                                                        <th className="p-3 text-left">Código</th>
-                                                        <th className="p-3 text-left">Descripción</th>
-                                                        <th className="p-3 text-center">Bulto</th>
-                                                        <th className="p-3 text-center">Pedido</th>
-                                                        <th className="p-3 text-center">Recibido</th>
-                                                        <th className="p-3 text-center">Diferencia</th>
-                                                        <th className="p-3 text-center">Estado</th>
-                                                        <th className="p-3"></th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {productosAgrupados[orden].map(p => {
-                                                        const dif = calcularDiferencia(p.pedido, p.recibido);
-                                                        const isOk = dif >= 0 && p.recibido > 0;
-                                                        return (
-                                                            <tr key={p.codigo + orden} className={`border-b hover:bg-gray-50 transition-colors ${!isOk && p.recibido > 0 ? 'bg-red-50' : ''}`}>
-                                                                <td className="p-3 text-sm font-medium">{p.codigo}</td>
-                                                                <td className="p-3 text-sm">{p.descripcion} <br/><span className="text-xs text-gray-400">{p.marca}</span></td>
-                                                                <td className="p-3 text-center text-sm">{p.bulto}</td>
-                                                                <td className="p-3 text-center">
-                                                                    <input type="number" className="w-16 p-1 border rounded text-center" value={p.pedido} onChange={e => actualizarCantidad(p.codigo, p.nroOrden, 'pedido', e.target.value)} />
-                                                                </td>
-                                                                <td className="p-3 text-center">
-                                                                    <input type="number" className="w-16 p-1 border-2 border-indigo-200 rounded text-center font-bold" value={p.recibido} onChange={e => actualizarCantidad(p.codigo, p.nroOrden, 'recibido', e.target.value)} />
-                                                                </td>
-                                                                <td className={`p-3 text-center font-bold ${dif < 0 ? 'text-red-500' : 'text-green-500'}`}>{dif > 0 ? '+' : ''}{formatearNumero(dif)}</td>
-                                                                <td className="p-3 text-center">
-                                                                    <span className={`px-2 py-1 rounded-full text-xs font-bold ${isOk ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                                                        {dif >= 0 ? 'COMPLETO' : 'FALTANTE'}
-                                                                    </span>
-                                                                </td>
-                                                                <td className="p-3 text-center">
-                                                                    <button onClick={() => eliminarProducto(p.codigo, p.nroOrden)} className="text-gray-300 hover:text-red-500 transition-colors"><i className="fas fa-times"></i></button>
-                                                                </td>
-                                                            </tr>
-                                                        );
-                                                    })}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    ))}
+                        {mostrarModalRecepcion && (
+                            <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center p-4 z-50">
+                                <div className="bg-white p-6 rounded-xl max-w-md w-full shadow-2xl">
+                                    <h3 className="font-bold mb-4 text-emerald-700">Actualizar Recepción Física</h3>
+                                    <p className="text-sm text-slate-500 mb-6">Se actualizarán las cantidades recibidas de {recepcionPDF.length} productos automáticamente.</p>
+                                    <div className="flex gap-2">
+                                        <button onClick={() => setMostrarModalRecepcion(false)} className="flex-1 p-2 bg-slate-100 rounded font-bold">Cancelar</button>
+                                        <button onClick={confirmarRecepcionPDF} className="flex-1 p-2 bg-emerald-600 text-white rounded font-bold">Actualizar</button>
+                                    </div>
                                 </div>
                             </div>
                         )}
@@ -1373,8 +1212,7 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
             );
         }
 
-        const root = ReactDOM.createRoot(document.getElementById('app'));
-        root.render(<App />);
+        ReactDOM.createRoot(document.getElementById('app')).render(<App />);
     </script>
 </body>
 </html>
