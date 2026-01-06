@@ -972,25 +972,17 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
         const proveedores = ['QUILMES', 'CCU', 'COCA COLA', 'DANONE', 'MASTELLONE'];
         const sucursales = ['006', '068', '162', '225', '226', '229', '232', '233', '235', '236', '237', '239', '240', '248', '254'];
         
-        // Función para normalizar nombres de proveedores (ya no es necesaria, pero la mantengo por compatibilidad)
         const normalizarProveedor = (proveedor) => {
             return proveedor.toUpperCase().trim();
         };
 
         function App() {
-            const [proveedor, setProveedor] = useState(() => {
-                return localStorage.getItem('proveedor') || '';
-            });
-            
-            const [sucursal, setSucursal] = useState(() => {
-                return localStorage.getItem('sucursal') || '';
-            });
-            
+            const [proveedor, setProveedor] = useState(() => localStorage.getItem('proveedor') || '');
+            const [sucursal, setSucursal] = useState(() => localStorage.getItem('sucursal') || '');
             const [productosSeleccionados, setProductosSeleccionados] = useState(() => {
                 const saved = localStorage.getItem('productosSeleccionados');
                 return saved ? JSON.parse(saved) : [];
             });
-            
             const [busqueda, setBusqueda] = useState('');
             const [mensajeGuardado, setMensajeGuardado] = useState('');
             const [cargandoPDF, setCargandoPDF] = useState(false);
@@ -998,8 +990,6 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
             const [mostrarModalPDF, setMostrarModalPDF] = useState(false);
             const [productosPDF, setProductosPDF] = useState([]);
             const [nroOrdenPDF, setNroOrdenPDF] = useState('');
-            
-            // NUEVO: Estados para PDF de recepción
             const [cargandoPDFRecepcion, setCargandoPDFRecepcion] = useState(false);
             const [errorPDFRecepcion, setErrorPDFRecepcion] = useState('');
             const [mostrarModalRecepcion, setMostrarModalRecepcion] = useState(false);
@@ -1007,23 +997,17 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
 
             useEffect(() => {
                 localStorage.setItem('proveedor', proveedor);
-                if (proveedor) {
-                    mostrarMensajeGuardado();
-                }
+                if (proveedor) mostrarMensajeGuardado();
             }, [proveedor]);
 
             useEffect(() => {
                 localStorage.setItem('sucursal', sucursal);
-                if (sucursal) {
-                    mostrarMensajeGuardado();
-                }
+                if (sucursal) mostrarMensajeGuardado();
             }, [sucursal]);
 
             useEffect(() => {
                 localStorage.setItem('productosSeleccionados', JSON.stringify(productosSeleccionados));
-                if (productosSeleccionados.length > 0) {
-                    mostrarMensajeGuardado();
-                }
+                if (productosSeleccionados.length > 0) mostrarMensajeGuardado();
             }, [productosSeleccionados]);
 
             const mostrarMensajeGuardado = () => {
@@ -1035,20 +1019,11 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
                 const arrayBuffer = await file.arrayBuffer();
                 const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
                 let fullText = '';
-                
-                console.log(`📄 PDF tiene ${pdf.numPages} página(s)`);
-                
                 for (let i = 1; i <= pdf.numPages; i++) {
                     const page = await pdf.getPage(i);
                     const textContent = await page.getTextContent();
-                    
-                    const pageText = textContent.items.map(item => item.str).join(' ');
-                    fullText += pageText + '\n';
-                    
-                    console.log(`   Página ${i}: ${textContent.items.length} elementos extraídos`);
+                    fullText += textContent.items.map(item => item.str).join(' ') + '\n';
                 }
-                
-                console.log(`✅ Extracción completa: ${fullText.length} caracteres`);
                 return fullText;
             };
 
@@ -1058,537 +1033,146 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
                 let proveedorDetectado = '';
                 let sucursalDetectada = '';
 
-                // Detectar sucursal
                 const matchSucursal = texto.match(/\[(\d{3})\]/);
-                if (matchSucursal && sucursales.includes(matchSucursal[1])) {
-                    sucursalDetectada = matchSucursal[1];
-                }
+                if (matchSucursal && sucursales.includes(matchSucursal[1])) sucursalDetectada = matchSucursal[1];
 
-                // NUEVO: Detectar número de orden - Manejar formato con columnas
-                let nroOrden = '';
-                
-                // DEBUG: Mostrar primeras líneas del PDF
-                console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-                console.log('🔍 DEBUG: Primeras 300 caracteres del PDF:');
-                console.log(texto.substring(0, 300));
-                console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-                
-                // Buscar "Número:" seguido EVENTUALMENTE de 7-8 dígitos
-                // Permite texto entre medio (como "Fecha:") porque el PDF tiene columnas
-                const matchNumero = texto.match(/Número:[^0-9]*(\d{7,8})/i);
-                
-                if (matchNumero) {
-                    nroOrden = matchNumero[1];
-                    console.log(`✅ Número de OC CAPTURADO: ${nroOrden} (patrón flexible)`);
-                } else {
-                    console.log(`⚠️ NO se encontró patrón "Número: ... XXXXXXXX"`);
-                    // Fallback: buscar "Nro.Orden Compra" en recepción
-                    const matchOrden = texto.match(/Nro\.Orden Compra[:.\s]*(\d+)/i);
-                    if (matchOrden) {
-                        nroOrden = matchOrden[1];
-                        console.log(`✅ Número de OC CAPTURADO (fallback): ${nroOrden}`);
-                    } else {
-                        console.log(`❌ No se pudo detectar número de OC con ningún patrón`);
-                    }
-                }
+                const matchNumero = texto.match(/Número:[^0-9]*(\d{7,8})/i) || texto.match(/Nro\.Orden Compra[:.\s]*(\d+)/i);
+                const nroOrden = matchNumero ? matchNumero[1] : '';
 
-                console.log('============================================');
-                console.log('📄 ANÁLISIS DEL PDF - BÚSQUEDA EN TEXTO COMPLETO');
-                console.log('============================================');
-                console.log('Sucursal detectada:', sucursalDetectada);
-                console.log('N° Orden detectado:', nroOrden);
-                console.log('Caracteres totales:', texto.length);
-                console.log('');
-
-                let productosDetectados = 0;
-                const proveedoresEncontrados = new Set();
-                const codigosNoEncontrados = [];
-                
-                // BÚSQUEDA CON DOS PATRONES en todo el texto
-                const todosLosCodigos = [];
+                // Búsqueda de productos con patrones 030/005
+                const regex030 = /\b030\s+(\d{7})\b/g;
+                const regex005 = /\b005\s+(\d{7})\b/g;
                 let match;
-                
-                // Patrón 1: "030 XXXXXXX" (7 dígitos)
-                const regex030 = /\b030\s+(\d{7})\b/gm;
-                while ((match = regex030.exec(texto)) !== null) {
-                    todosLosCodigos.push({
-                        codigo: match[1],
-                        posicion: match.index,
-                        tipo: '030'
-                    });
-                }
-                
-                // Patrón 2: "005 XXXXXXX" (7 dígitos)
-                const regex005 = /\b005\s+(\d{7})\b/gm;
-                while ((match = regex005.exec(texto)) !== null) {
-                    todosLosCodigos.push({
-                        codigo: match[1],
-                        posicion: match.index,
-                        tipo: '005'
-                    });
-                }
-                
-                console.log(`🔍 Códigos detectados:`);
-                console.log(`   - Patrón "030": ${todosLosCodigos.filter(c => c.tipo === '030').length}`);
-                console.log(`   - Patrón "005": ${todosLosCodigos.filter(c => c.tipo === '005').length}`);
-                console.log(`   TOTAL: ${todosLosCodigos.length}`);
-                console.log('');
-                
-                // Procesar cada código encontrado
-                for (const {codigo, posicion, tipo} of todosLosCodigos) {
-                    if (productosYaAgregados.has(codigo)) {
-                        continue;
-                    }
-                    
-                    productosDetectados++;
-                    
-                    // Extraer contexto SOLO hacia adelante (150 caracteres)
-                    const contexto = texto.substring(posicion, Math.min(texto.length, posicion + 150));
-                    let cantidad = 0;
-                    
-                    if (tipo === '030') {
-                        // Para 030: buscar patrón "U/M [espacio] Cantidad"
-                        // La estructura es: Bto Cont. U/M Cant. Costo
-                        // Necesitamos tomar el número DESPUÉS de U/M, no antes
-                        const matchCant = contexto.match(/(GR|CM3|KGR?|LTS?|CU)\s+(\d+[\.,]?\d*)/i);
-                        if (matchCant) {
-                            const valorStr = matchCant[2].replace(',', '.');
-                            const valor = parseFloat(valorStr);
-                            
-                            // Validar que sea un rango razonable para cantidad (no precio)
-                            if (valor >= 0.1 && valor <= 500) {
-                                cantidad = valor;
-                                console.log(`   [030] ${codigo} → ${matchCant[1]} → Cant: ${cantidad}`);
-                            } else {
-                                console.log(`   ⚠️ [030] ${codigo} → Valor ${valor} fuera de rango (0.1-500), probablemente es precio`);
-                            }
-                        }
-                    } else if (tipo === '005') {
-                        // Para 005 (BEBIDAS): buscar "CM3" seguido de cantidad con formato X.XX
-                        const matchCant = contexto.match(/CM3\s+([\d]+[\.,]?\d*)/i);
-                        if (matchCant) {
-                            const valorStr = matchCant[1].replace(',', '.');
-                            const valor = parseFloat(valorStr);
-                            
-                            // Validar rango razonable para cantidad
-                            if (valor >= 0.1 && valor <= 500) {
-                                cantidad = valor;
-                                console.log(`   [005] ${codigo} → CM3 → "${matchCant[1]}" → Cant: ${cantidad}`);
-                            } else {
-                                console.log(`   ⚠️ [005] ${codigo} → Valor ${valor} fuera de rango (0.1-500), probablemente es precio`);
-                            }
-                        }
-                    }
 
-                    // Buscar producto en la base de datos
+                const procesarMatch = (m, tipo) => {
+                    const codigo = m[1];
+                    if (productosYaAgregados.has(codigo)) return;
                     const producto = productos.find(p => p.codigo === codigo);
-                    
                     if (producto) {
+                        const contexto = texto.substring(m.index, m.index + 150);
+                        const matchCant = contexto.match(/(?:GR|CM3|KGR?|LTS?|CU|UN)\s+(\d+[\.,]?\d*)/i);
+                        let cantidad = 0;
+                        if (matchCant) {
+                            cantidad = parseFloat(matchCant[1].replace(',', '.'));
+                        }
                         productosYaAgregados.add(codigo);
-                        proveedoresEncontrados.add(producto.proveedor);
-                        
-                        productosEncontrados.push({
-                            ...producto,
-                            pedido: cantidad,
-                            recibido: 0,
-                            nroOrden: nroOrden  // NUEVO: Agregar nroOrden
-                        });
-                        console.log(`✅ [${tipo}] ${codigo} → Cant: ${cantidad} → ${producto.descripcion.substring(0,30)}...`);
-                    } else {
-                        codigosNoEncontrados.push(codigo);
-                        console.log(`❌ [${tipo}] ${codigo} → Cant: ${cantidad} → NO EN BD`);
+                        productosEncontrados.push({...producto, pedido: cantidad, recibido: 0, nroOrden: nroOrden});
+                        proveedorDetectado = producto.proveedor;
                     }
-                }
-
-                // Determinar el proveedor
-                const proveedoresArray = Array.from(proveedoresEncontrados);
-                if (proveedoresArray.length === 1) {
-                    proveedorDetectado = proveedoresArray[0];
-                } else if (proveedoresArray.length > 1) {
-                    const conteo = {};
-                    productosEncontrados.forEach(p => {
-                        conteo[p.proveedor] = (conteo[p.proveedor] || 0) + 1;
-                    });
-                    proveedorDetectado = Object.keys(conteo).reduce((a, b) => 
-                        conteo[a] > conteo[b] ? a : b
-                    );
-                }
-
-                console.log('');
-                console.log('============================================');
-                console.log('📊 RESUMEN');
-                console.log('============================================');
-                console.log('Códigos detectados:', productosDetectados);
-                console.log('✅ Encontrados en BD:', productosEncontrados.length);
-                console.log('❌ NO encontrados:', codigosNoEncontrados.length);
-                if (codigosNoEncontrados.length > 0 && codigosNoEncontrados.length < 20) {
-                    console.log('Códigos faltantes:', codigosNoEncontrados.join(', '));
-                }
-                console.log('Proveedores:', Array.from(proveedoresEncontrados).join(', '));
-                console.log('Proveedor principal:', proveedorDetectado);
-                console.log('============================================');
-
-                return {
-                    proveedor: proveedorDetectado,
-                    sucursal: sucursalDetectada,
-                    nroOrden: nroOrden,  // NUEVO: Retornar nroOrden
-                    productos: productosEncontrados
                 };
+
+                while ((match = regex030.exec(texto)) !== null) procesarMatch(match, '030');
+                while ((match = regex005.exec(texto)) !== null) procesarMatch(match, '005');
+
+                return { proveedor: proveedorDetectado, sucursal: sucursalDetectada, nroOrden, productos: productosEncontrados };
             };
 
-            // NUEVA FUNCIÓN: Parsear PDF de RECEPCIÓN (sin códigos 005/030)
+            // NUEVA FUNCIÓN CORREGIDA: Parsear PDF de RECEPCIÓN
             const parsearPDFRecepcion = (texto) => {
                 const productosEncontrados = [];
                 const productosYaAgregados = new Set();
 
-                // Detectar N° de Orden de Compra
-                let nroOrden = '';
+                // Detectar N° de Orden
                 const matchOrden = texto.match(/(?:Nro\.Orden Compra|Orden Compra|N\.?Orden)[:.\s]*(\d+)/i);
-                if (matchOrden) {
-                    nroOrden = matchOrden[1];
-                }
+                const nroOrden = matchOrden ? matchOrden[1] : '';
 
-                console.log('============================================');
-                console.log('📦 ANÁLISIS DE PDF DE RECEPCIÓN');
-                console.log('============================================');
-                console.log('N° Orden detectado:', nroOrden);
-                console.log('Caracteres totales:', texto.length);
-                console.log('');
-
-                // BUSCAR CÓDIGOS DE 7 DÍGITOS directamente (sin prefijo 005/030)
-                // Patrón: código de 7 dígitos seguido de descripción y cantidad
-                const regexCodigo = /\b(\d{7})\b/gm;
+                // Buscar códigos de 7 dígitos
+                const regexCodigo = /\b(\d{7})\b/g;
                 let match;
-                const codigosEncontrados = [];
-                const todosLosCodigos7Digitos = [];
 
                 while ((match = regexCodigo.exec(texto)) !== null) {
                     const codigo = match[1];
-                    todosLosCodigos7Digitos.push(codigo);
-                    
-                    // Verificar que el código existe en nuestra base de datos
-                    const producto = productos.find(p => p.codigo === codigo);
-                    if (producto && !productosYaAgregados.has(codigo)) {
-                        codigosEncontrados.push({
-                            codigo: codigo,
-                            posicion: match.index
-                        });
-                        console.log(`   ✓ Código válido: ${codigo} → ${producto.descripcion.substring(0, 40)}`);
-                    } else if (!producto) {
-                        console.log(`   ⚠️ Código NO en BD: ${codigo}`);
-                    }
-                }
+                    const productoBase = productos.find(p => p.codigo === codigo);
 
-                console.log(`🔍 Total códigos de 7 dígitos encontrados en PDF: ${todosLosCodigos7Digitos.length}`);
-                console.log(`   Primeros 10: ${todosLosCodigos7Digitos.slice(0, 10).join(', ')}`);
-                console.log(`✅ Códigos válidos (en BD): ${codigosEncontrados.length}`);
-                console.log('');
+                    if (productoBase && !productosYaAgregados.has(codigo)) {
+                        const contexto = texto.substring(match.index, match.index + 200);
+                        
+                        // CORRECCIÓN CLAVE: Buscamos el número que viene DESPUÉS de la unidad de medida
+                        // Esto ignora el 11.70 (Bonif) porque este suele estar antes de la unidad.
+                        const regexCantPostUM = /(?:CM3|GR|CU|KGR|LTS|UN)\s+(\d+(?:[\.,]\d+)?)/i;
+                        const matchCant = contexto.match(regexCantPostUM);
 
-                // Procesar cada código encontrado
-                for (const {codigo, posicion} of codigosEncontrados) {
-                    if (productosYaAgregados.has(codigo)) {
-                        continue;
-                    }
-
-                    // Extraer contexto hacia adelante (150 caracteres para asegurar que incluye el costo)
-                    const contexto = texto.substring(posicion, Math.min(texto.length, posicion + 150));
-                    let cantidad = 0;
-
-                    console.log(`\n🔍 [RECEP] Analizando código: ${codigo}`);
-                    console.log(`   Contexto (120 chars): "${contexto.substring(0, 120)}"`);
-
-                    // PATRÓN BASADO EN ESTRUCTURA DE COLUMNAS DEL PDF
-                    // Estructura: ... Bto Cont U/M Cant Costo %Bon %Iva
-                    // Ejemplo: "... 1   330  CM3  12   2858.00  0.00 21.00"
-                    // IMPORTANTE: La cantidad siempre es pequeña (1-500), el costo es grande (>1000)
-                    
-                    const matchUM = contexto.match(/\b(CU|GR|CM3|KGR?|LTS?)\b/i);
-                    
-                    if (matchUM) {
-                        console.log(`   ✓ U/M: ${matchUM[1]} en posición ${matchUM.index}`);
-                        
-                        // Extraer texto DESPUÉS de U/M
-                        const despuesUM = contexto.substring(matchUM.index + matchUM[0].length);
-                        console.log(`   Después U/M: "${despuesUM.substring(0, 80)}"`);
-                        
-                        // ESTRATEGIA: Buscar SOLO números pequeños (para evitar costos)
-                        // Captura: 12, 5.8, 24 pero NO 2858.00, 5960.00
-                        
-                        // Patrón: número de 1-3 dígitos con máximo 2 decimales
-                        // CLAVE: Debe tener espacio después (no ser parte de 2858.00)
-                        const matches = despuesUM.matchAll(/\s+(\d{1,3}(?:\.\d{1,2})?)\s/g);
-                        const numerosEncontrados = Array.from(matches).map(m => parseFloat(m[1]));
-                        
-                        console.log(`   Números encontrados después de U/M: ${numerosEncontrados.join(', ')}`);
-                        
-                        // Tomar el PRIMER número razonable (1-500)
-                        for (const num of numerosEncontrados) {
-                            if (num >= 0.1 && num <= 500) {
-                                cantidad = num;
-                                console.log(`✅ [RECEP] ${codigo} → ${matchUM[1]} ${cantidad}`);
-                                break;
+                        if (matchCant) {
+                            const cantidad = parseFloat(matchCant[1].replace(',', '.'));
+                            if (!isNaN(cantidad) && cantidad > 0) {
+                                productosYaAgregados.add(codigo);
+                                productosEncontrados.push({
+                                    ...productoBase,
+                                    pedido: cantidad, 
+                                    recibido: 0,
+                                    nroOrden: nroOrden
+                                });
                             }
                         }
-                        
-                        if (cantidad === 0) {
-                            console.log(`❌ [RECEP] ${codigo} → No se encontró cantidad válida (encontrados: ${numerosEncontrados.join(', ')})`);
-                        }
-                    } else {
-                        console.log(`❌ [RECEP] ${codigo} → No se encontró U/M`);
-                    }
-
-                    // Buscar producto en la base de datos
-                    const producto = productos.find(p => p.codigo === codigo);
-                    
-                    if (producto && cantidad > 0) {
-                        productosYaAgregados.add(codigo);
-                        
-                        productosEncontrados.push({
-                            ...producto,
-                            pedido: cantidad,
-                            recibido: 0,
-                            nroOrden: nroOrden
-                        });
-                        console.log(`✅✅✅ [RECEP] ${codigo} → AGREGADO con Cant: ${cantidad}`);
-                    } else if (producto) {
-                        console.log(`⚠️ [RECEP] ${codigo} → Producto existe pero cant=0`);
-                    } else {
-                        console.log(`⚠️ [RECEP] ${codigo} → No existe en BD`);
                     }
                 }
 
-                console.log('');
-                console.log('============================================');
-                console.log('📦 RESUMEN RECEPCIÓN');
-                console.log('============================================');
-                console.log('Productos detectados:', productosEncontrados.length);
-                console.log('N° Orden:', nroOrden);
-                console.log('============================================');
-
-                return {
-                    nroOrden: nroOrden,
-                    productos: productosEncontrados,
-                    esRecepcion: true
-                };
+                return { nroOrden, productos: productosEncontrados, esRecepcion: true };
             };
 
             const handleCargarPDF = async (event) => {
                 const file = event.target.files[0];
-                if (!file || file.type !== 'application/pdf') {
-                    setErrorPDF('Por favor seleccione un archivo PDF válido');
-                    return;
-                }
-
+                if (!file) return;
                 setCargandoPDF(true);
                 setErrorPDF('');
-
                 try {
                     const texto = await extractTextFromPDF(file);
                     const resultado = parsearPDF(texto);
-
-                    if (!resultado.sucursal) {
-                        setErrorPDF('No se pudo detectar la sucursal en el PDF');
-                        setCargandoPDF(false);
-                        return;
+                    if (!resultado.sucursal) { setErrorPDF('No se detectó sucursal'); }
+                    else if (resultado.productos.length === 0) { setErrorPDF('No se encontraron productos'); }
+                    else {
+                        setProductosPDF(resultado.productos);
+                        setNroOrdenPDF(resultado.nroOrden);
+                        setProveedor(resultado.proveedor || 'MIXTO');
+                        setSucursal(resultado.sucursal);
+                        setMostrarModalPDF(true);
                     }
+                } catch (e) { setErrorPDF('Error: ' + e.message); }
+                finally { setCargandoPDF(false); event.target.value = ''; }
+            };
 
+            const handleCargarPDFRecepcion = async (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+                setCargandoPDFRecepcion(true);
+                setErrorPDFRecepcion('');
+                try {
+                    const texto = await extractTextFromPDF(file);
+                    const resultado = parsearPDFRecepcion(texto);
+                    
                     if (resultado.productos.length === 0) {
-                        setErrorPDF('No se encontraron productos en el PDF. Verifica que los códigos estén en tu base de datos.');
-                        setCargandoPDF(false);
-                        return;
+                        setErrorPDFRecepcion('No se encontraron productos en la recepción');
+                    } else {
+                        // Match con productos en pantalla
+                        const conMatch = resultado.productos
+                            .map(prodRec => {
+                                const existente = productosSeleccionados.find(p => p.codigo === prodRec.codigo);
+                                return existente ? { ...prodRec, pedidoOriginal: existente.pedido, nroOrdenOriginal: existente.nroOrden } : null;
+                            })
+                            .filter(p => p !== null);
+
+                        if (conMatch.length === 0) {
+                            setErrorPDFRecepcion('Los productos del PDF no están en la orden actual');
+                        } else {
+                            setRecepcionPDF(conMatch);
+                            setMostrarModalRecepcion(true);
+                        }
                     }
-
-                    // Mostrar modal de confirmación
-                    setProductosPDF(resultado.productos);
-                    setNroOrdenPDF(resultado.nroOrden);
-                    setProveedor(resultado.proveedor || 'MIXTO');
-                    setSucursal(resultado.sucursal);
-                    setMostrarModalPDF(true);
-
-                } catch (error) {
-                    console.error('Error al procesar PDF:', error);
-                    setErrorPDF('Error al procesar el PDF: ' + error.message);
-                } finally {
-                    setCargandoPDF(false);
-                    event.target.value = '';
-                }
+                } catch (e) { setErrorPDFRecepcion('Error: ' + e.message); }
+                finally { setCargandoPDFRecepcion(false); event.target.value = ''; }
             };
 
             const confirmarCargaPDF = () => {
-                // Si el proveedor es el mismo, agregar productos; si no, reemplazar
-                const proveedorActual = localStorage.getItem('proveedor') || '';
-                
-                if (proveedor === proveedorActual && productosSeleccionados.length > 0) {
-                    // AGREGAR productos (sin duplicados por código + nroOrden)
-                    const nuevosProductos = productosPDF.filter(nuevo => 
-                        !productosSeleccionados.some(existente => 
-                            existente.codigo === nuevo.codigo && existente.nroOrden === nuevo.nroOrden
-                        )
-                    );
-                    setProductosSeleccionados([...productosSeleccionados, ...nuevosProductos]);
-                    setMensajeGuardado(`✅ ${nuevosProductos.length} productos agregados de OC ${nroOrdenPDF || 'sin número'}`);
-                } else {
-                    // REEMPLAZAR todo
-                    setProductosSeleccionados(productosPDF);
-                    setMensajeGuardado(`✅ Orden cargada desde PDF (OC ${nroOrdenPDF || 'sin número'})`);
-                }
-                
+                setProductosSeleccionados(productosPDF);
                 setMostrarModalPDF(false);
-                setProductosPDF([]);
-                setNroOrdenPDF('');
-                setTimeout(() => setMensajeGuardado(''), 3000);
-            };
-
-            const cancelarCargaPDF = () => {
-                setMostrarModalPDF(false);
-                setProductosPDF([]);
-                setNroOrdenPDF('');
-            };
-
-            // NUEVO: Manejar carga de PDF de recepción
-            const handleCargarPDFRecepcion = async (event) => {
-                const file = event.target.files[0];
-                if (!file || file.type !== 'application/pdf') {
-                    setErrorPDFRecepcion('Por favor seleccione un archivo PDF válido');
-                    return;
-                }
-
-                if (productosSeleccionados.length === 0) {
-                    setErrorPDFRecepcion('Primero debe cargar una orden de compra');
-                    return;
-                }
-
-                setCargandoPDFRecepcion(true);
-                setErrorPDFRecepcion('');
-
-                try {
-                    const texto = await extractTextFromPDF(file);
-                    
-                    // NUEVO: Usar función especial para recepciones
-                    const resultado = parsearPDFRecepcion(texto);
-
-                    // VALIDAR NÚMERO DE OC - asegurar que coincide
-                    if (resultado.nroOrden && nroOrdenPDF && resultado.nroOrden !== nroOrdenPDF) {
-                        const confirmar = confirm(
-                            `⚠️ ADVERTENCIA: El número de OC no coincide\n\n` +
-                            `OC cargada: ${nroOrdenPDF}\n` +
-                            `Recepción: ${resultado.nroOrden}\n\n` +
-                            `¿Desea continuar de todos modos?`
-                        );
-                        if (!confirmar) {
-                            setCargandoPDFRecepcion(false);
-                            setErrorPDFRecepcion('Carga cancelada - Números de OC no coinciden');
-                            return;
-                        }
-                    } else if (resultado.nroOrden && nroOrdenPDF && resultado.nroOrden === nroOrdenPDF) {
-                        console.log(`✅ Validación: Número de OC coincide (${nroOrdenPDF})`);
-                    }
-
-                    if (resultado.productos.length === 0) {
-                        setErrorPDFRecepcion('No se encontraron productos en el PDF de recepción');
-                        setCargandoPDFRecepcion(false);
-                        return;
-                    }
-
-                    // Hacer match con productos existentes
-                    const productosConMatch = [];
-                    const productosSinMatch = [];
-                    
-                    resultado.productos.forEach(prodRecepcion => {
-                        // Buscar coincidencia por código Y por nroOrden (si existe)
-                        let productoExistente = productosSeleccionados.find(p => 
-                            p.codigo === prodRecepcion.codigo && p.nroOrden === prodRecepcion.nroOrden
-                        );
-                        
-                        // Si no encuentra por nroOrden, buscar solo por código
-                        if (!productoExistente) {
-                            productoExistente = productosSeleccionados.find(p => p.codigo === prodRecepcion.codigo);
-                        }
-                        
-                        if (productoExistente) {
-                            productosConMatch.push({
-                                ...prodRecepcion,
-                                pedidoOriginal: productoExistente.pedido,
-                                nroOrdenOriginal: productoExistente.nroOrden
-                            });
-                        } else {
-                            productosSinMatch.push(prodRecepcion);
-                        }
-                    });
-
-                    if (productosConMatch.length === 0) {
-                        setErrorPDFRecepcion('No se encontraron coincidencias con los productos de la orden');
-                        setCargandoPDFRecepcion(false);
-                        return;
-                    }
-
-                    console.log('📦 Productos con match:', productosConMatch.length);
-                    console.log('⚠️ Productos sin match:', productosSinMatch.length);
-                    if (productosSinMatch.length > 0) {
-                        console.log('Códigos sin match:', productosSinMatch.map(p => p.codigo).join(', '));
-                    }
-
-                    setRecepcionPDF(productosConMatch);
-                    setMostrarModalRecepcion(true);
-
-                } catch (error) {
-                    console.error('Error al procesar PDF de recepción:', error);
-                    setErrorPDFRecepcion('Error al procesar el PDF: ' + error.message);
-                } finally {
-                    setCargandoPDFRecepcion(false);
-                    event.target.value = '';
-                }
             };
 
             const confirmarRecepcionPDF = () => {
-                let actualizados = 0;
-                
                 setProductosSeleccionados(productosSeleccionados.map(p => {
-                    const recepcion = recepcionPDF.find(r => 
-                        r.codigo === p.codigo && r.nroOrdenOriginal === p.nroOrden
-                    );
-                    
-                    if (recepcion) {
-                        actualizados++;
-                        return { ...p, recibido: recepcion.pedido }; // El "pedido" del PDF de recepción es la cantidad recibida
-                    }
-                    return p;
+                    const rec = recepcionPDF.find(r => r.codigo === p.codigo);
+                    return rec ? { ...p, recibido: rec.pedido } : p;
                 }));
-                
                 setMostrarModalRecepcion(false);
-                setRecepcionPDF([]);
-                setMensajeGuardado(`✅ ${actualizados} productos actualizados con recepción`);
-                setTimeout(() => setMensajeGuardado(''), 3000);
-            };
-
-            const cancelarRecepcionPDF = () => {
-                setMostrarModalRecepcion(false);
-                setRecepcionPDF([]);
-            };
-
-            const productosFiltrados = productos.filter(p => 
-                p.proveedor === proveedor && 
-                (p.descripcion.toLowerCase().includes(busqueda.toLowerCase()) || 
-                 p.codigo.includes(busqueda) ||
-                 p.marca.toLowerCase().includes(busqueda.toLowerCase()))
-            );
-
-            const agregarProducto = (producto) => {
-                if (!proveedor || !sucursal) {
-                    alert('Seleccione proveedor y sucursal');
-                    return;
-                }
-                const existe = productosSeleccionados.find(p => p.codigo === producto.codigo && !p.nroOrden);
-                if (existe) {
-                    alert('Producto ya agregado');
-                    return;
-                }
-                setProductosSeleccionados([...productosSeleccionados, {
-                    ...producto,
-                    pedido: 0,
-                    recibido: 0,
-                    nroOrden: ''
-                }]);
             };
 
             const actualizarCantidad = (codigo, nroOrden, campo, valor) => {
@@ -1598,370 +1182,26 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
             };
 
             const eliminarProducto = (codigo, nroOrden) => {
-                setProductosSeleccionados(productosSeleccionados.filter(p => 
-                    !(p.codigo === codigo && p.nroOrden === nroOrden)
-                ));
+                setProductosSeleccionados(productosSeleccionados.filter(p => !(p.codigo === codigo && p.nroOrden === nroOrden)));
             };
 
-            const calcularDiferencia = (pedido, recibido) => recibido - pedido;
-            
-            const calcularPorcentaje = (pedido, recibido) => {
-                if (pedido === 0) return 100;
-                return Math.round((recibido / pedido) * 100);
-            };
-            
-            // Formatear número: mostrar máximo 2 decimales, eliminar .00 si es entero
-            const formatearNumero = (num) => {
-                if (Number.isInteger(num)) return num;
-                return Math.round(num * 100) / 100; // Redondea a 2 decimales
-            };
-
-            const exportarXLSX = () => {
-                // Crear datos para la hoja de cálculo
-                const datosExcel = [];
-                
-                // Encabezado con información general
-                datosExcel.push(['CONTROL DE ÓRDENES DE COMPRA']);
-                datosExcel.push([`Proveedor: ${proveedor}`, `Sucursal: ${sucursal}`, `Fecha: ${new Date().toLocaleDateString('es-AR')}`]);
-                datosExcel.push([]); // Línea vacía
-                
-                // Encabezados de columnas
-                datosExcel.push(['N° Orden', 'Código', 'Descripción', 'Marca', 'Bulto', 'Pedido', 'Recibido', 'Diferencia', 'Estado', '%']);
-                
-                // Datos de productos
-                productosSeleccionados.forEach(p => {
-                    const dif = calcularDiferencia(p.pedido, p.recibido);
-                    const pct = calcularPorcentaje(p.pedido, p.recibido);
-                    const estado = dif >= 0 ? 'Completo' : 'Faltante';
-                    
-                    datosExcel.push([
-                        p.nroOrden || '-',
-                        p.codigo,
-                        p.descripcion,
-                        p.marca,
-                        p.bulto,
-                        p.pedido,
-                        p.recibido,
-                        dif,
-                        estado,
-                        pct
-                    ]);
-                });
-                
-                // Fila de totales
-                const totalPedido = productosSeleccionados.reduce((sum, p) => sum + p.pedido, 0);
-                const totalRecibido = productosSeleccionados.reduce((sum, p) => sum + p.recibido, 0);
-                const totalDif = totalRecibido - totalPedido;
-                const cumplimientoGlobal = calcularPorcentaje(totalPedido, totalRecibido);
-                
-                datosExcel.push([]);
-                datosExcel.push(['', '', '', '', 'TOTALES', formatearNumero(totalPedido), formatearNumero(totalRecibido), formatearNumero(totalDif), `${cumplimientoGlobal}% Cumplimiento`, '']);
-                
-                // Crear libro de trabajo
-                const wb = XLSX.utils.book_new();
-                const ws = XLSX.utils.aoa_to_sheet(datosExcel);
-                
-                // Ajustar anchos de columna
-                ws['!cols'] = [
-                    { wch: 12 },  // N° Orden
-                    { wch: 10 },  // Código
-                    { wch: 40 },  // Descripción
-                    { wch: 15 },  // Marca
-                    { wch: 8 },   // Bulto
-                    { wch: 10 },  // Pedido
-                    { wch: 10 },  // Recibido
-                    { wch: 12 },  // Diferencia
-                    { wch: 12 },  // Estado
-                    { wch: 8 }    // %
-                ];
-                
-                // Agregar la hoja al libro
-                XLSX.utils.book_append_sheet(wb, ws, 'Control Orden');
-                
-                // Descargar archivo
-                const nombreArchivo = `orden_${proveedor}_${sucursal}_${new Date().toISOString().split('T')[0]}.xlsx`;
-                XLSX.writeFile(wb, nombreArchivo);
-                
-                setMensajeGuardado('📊 Excel generado correctamente');
-                setTimeout(() => setMensajeGuardado(''), 3000);
-            };
+            const calcularDiferencia = (p, r) => r - p;
+            const calcularPorcentaje = (p, r) => p === 0 ? 100 : Math.round((r / p) * 100);
+            const formatearNumero = (num) => Number.isInteger(num) ? num : Math.round(num * 100) / 100;
 
             const exportarPDF = () => {
                 const { jsPDF } = window.jspdf;
-                const doc = new jsPDF('l', 'mm', 'a4'); // Landscape, mm, A4
-                
-                // Título
-                doc.setFontSize(16);
-                doc.setFont(undefined, 'bold');
-                doc.text('CONTROL DE ORDENES DE COMPRA', 148, 15, { align: 'center' });
-                
-                // Información general
-                doc.setFontSize(10);
-                doc.setFont(undefined, 'normal');
-                doc.text(`Proveedor: ${proveedor}`, 14, 25);
-                doc.text(`Sucursal: ${sucursal}`, 14, 30);
-                doc.text(`Fecha: ${new Date().toLocaleDateString('es-AR')}`, 14, 35);
-                
-                // Preparar datos para la tabla
-                const datosTabla = productosSeleccionados.map(p => {
-                    const dif = calcularDiferencia(p.pedido, p.recibido);
-                    const pct = calcularPorcentaje(p.pedido, p.recibido);
-                    const estado = dif >= 0 ? 'Completo' : 'Faltante'; // SIN SÍMBOLOS
-                    
-                    return [
-                        p.nroOrden || '-',
-                        p.codigo,
-                        p.descripcion.substring(0, 35) + (p.descripcion.length > 35 ? '...' : ''),
-                        p.marca,
-                        p.bulto,
-                        formatearNumero(p.pedido),
-                        formatearNumero(p.recibido),
-                        (dif > 0 ? '+' : '') + formatearNumero(dif),
-                        estado,
-                        pct + '%'
-                    ];
-                });
-                
-                // Calcular totales
-                const totalPedido = productosSeleccionados.reduce((sum, p) => sum + p.pedido, 0);
-                const totalRecibido = productosSeleccionados.reduce((sum, p) => sum + p.recibido, 0);
-                const totalDif = totalRecibido - totalPedido;
-                const cumplimientoGlobal = calcularPorcentaje(totalPedido, totalRecibido);
-                
-                // Crear tabla
-                doc.autoTable({
-                    startY: 40,
-                    head: [['N Orden', 'Codigo', 'Descripcion', 'Marca', 'Bulto', 'Pedido', 'Recibido', 'Dif.', 'Estado', '%']],
-                    body: datosTabla,
-                    foot: [['', '', '', '', 'TOTALES', formatearNumero(totalPedido), formatearNumero(totalRecibido), (totalDif > 0 ? '+' : '') + formatearNumero(totalDif), cumplimientoGlobal + '%', '']],
-                    theme: 'grid',
-                    headStyles: { 
-                        fillColor: [79, 70, 229], // Indigo
-                        textColor: 255,
-                        fontStyle: 'bold',
-                        fontSize: 8
-                    },
-                    footStyles: {
-                        fillColor: [31, 41, 55], // Gray-800
-                        textColor: 255,
-                        fontStyle: 'bold',
-                        fontSize: 9
-                    },
-                    bodyStyles: {
-                        fontSize: 7,
-                        cellPadding: 2
-                    },
-                    columnStyles: {
-                        0: { cellWidth: 18 },  // N° Orden
-                        1: { cellWidth: 18 },  // Código
-                        2: { cellWidth: 70 },  // Descripción
-                        3: { cellWidth: 25 },  // Marca
-                        4: { cellWidth: 12 },  // Bulto
-                        5: { cellWidth: 15 },  // Pedido
-                        6: { cellWidth: 15 },  // Recibido
-                        7: { cellWidth: 15 },  // Diferencia
-                        8: { cellWidth: 22 },  // Estado
-                        9: { cellWidth: 12 }   // %
-                    },
-                    didParseCell: function(data) {
-                        // Colorear filas según estado
-                        if (data.section === 'body' && data.column.index === 8) {
-                            if (data.cell.text[0] && data.cell.text[0] === 'Completo') {
-                                data.row.cells[8].styles.textColor = [6, 95, 70]; // Green
-                                data.row.cells[8].styles.fillColor = [209, 250, 229]; // Green-light
-                                data.row.cells[8].styles.fontStyle = 'bold';
-                            } else if (data.cell.text[0] && data.cell.text[0] === 'Faltante') {
-                                data.row.cells[8].styles.textColor = [153, 27, 27]; // Red
-                                data.row.cells[8].styles.fillColor = [254, 226, 226]; // Red-light
-                                data.row.cells[8].styles.fontStyle = 'bold';
-                            }
-                        }
-                    }
-                });
-                
-                // Footer con información del sistema
-                const pageCount = doc.internal.getNumberOfPages();
-                for (let i = 1; i <= pageCount; i++) {
-                    doc.setPage(i);
-                    doc.setFontSize(8);
-                    doc.setTextColor(128);
-                    doc.text(`Sistema SAIEP - Control de Ordenes | Pag. ${i} de ${pageCount}`, 148, 200, { align: 'center' });
-                }
-                
-                // Descargar PDF
-                const nombreArchivo = `orden_${proveedor}_${sucursal}_${new Date().toISOString().split('T')[0]}.pdf`;
-                doc.save(nombreArchivo);
-                
-                setMensajeGuardado('📄 PDF generado correctamente');
-                setTimeout(() => setMensajeGuardado(''), 3000);
+                const doc = new jsPDF('l', 'mm', 'a4');
+                doc.text('CONTROL DE ÓRDENES DE COMPRA', 148, 15, { align: 'center' });
+                const rows = productosSeleccionados.map(p => [
+                    p.nroOrden || '-', p.codigo, p.descripcion, p.marca, p.bulto, p.pedido, p.recibido, 
+                    calcularDiferencia(p.pedido, p.recibido), (calcularDiferencia(p.pedido, p.recibido) >= 0 ? 'Completo' : 'Faltante'), 
+                    calcularPorcentaje(p.pedido, p.recibido) + '%'
+                ]);
+                doc.autoTable({ head: [['N Orden', 'Codigo', 'Descripcion', 'Marca', 'Bulto', 'Pedido', 'Recibido', 'Dif', 'Estado', '%']], body: rows, startY: 25 });
+                doc.save(`orden_${proveedor}.pdf`);
             };
 
-            const enviarPorWhatsApp = async () => {
-                // Preguntar si quiere enviar con o sin PDF
-                const conPDF = confirm('¿Desea adjuntar el PDF al mensaje de WhatsApp?\n\nOK = Con PDF adjunto\nCancelar = Solo texto');
-                
-                // Pedir número de WhatsApp
-                const numero = prompt('Ingrese el número de WhatsApp (sin +54, sin 0, sin 15):\nEjemplo: 2995551234', '');
-                if (!numero) return;
-
-                // Limpiar el número (quitar espacios, guiones, etc)
-                const numeroLimpio = numero.replace(/\D/g, '');
-                
-                // Calcular totales
-                const totalPedido = productosSeleccionados.reduce((sum, p) => sum + p.pedido, 0);
-                const totalRecibido = productosSeleccionados.reduce((sum, p) => sum + p.recibido, 0);
-                const totalDif = totalRecibido - totalPedido;
-                const cumplimientoGlobal = calcularPorcentaje(totalPedido, totalRecibido);
-                
-                // Agrupar por estado
-                const completos = productosSeleccionados.filter(p => calcularDiferencia(p.pedido, p.recibido) >= 0);
-                const faltantes = productosSeleccionados.filter(p => calcularDiferencia(p.pedido, p.recibido) < 0);
-
-                // Crear mensaje para WhatsApp
-                let mensaje = `*CONTROL DE ORDENES DE COMPRA*\n`;
-                mensaje += `================================\n`;
-                mensaje += `Proveedor: *${proveedor}*\n`;
-                mensaje += `Sucursal: *${sucursal}*\n`;
-                mensaje += `Fecha: ${new Date().toLocaleDateString('es-AR')}\n`;
-                mensaje += `================================\n\n`;
-
-                mensaje += `*RESUMEN GENERAL*\n`;
-                mensaje += `Total Productos: ${productosSeleccionados.length}\n`;
-                mensaje += `Total Pedido: ${totalPedido} unidades\n`;
-                mensaje += `Total Recibido: ${totalRecibido} unidades\n`;
-                mensaje += `Diferencia: ${totalDif > 0 ? '+' : ''}${totalDif}\n`;
-                mensaje += `Cumplimiento: *${cumplimientoGlobal}%*\n\n`;
-
-                mensaje += `Completos: ${completos.length} ✓\n`;
-                mensaje += `Faltantes: ${faltantes.length} ✗\n\n`;
-
-                // Solo mostrar faltantes si hay (para no hacer el mensaje muy largo)
-                if (faltantes.length > 0 && faltantes.length <= 10) {
-                    mensaje += `*PRODUCTOS FALTANTES:*\n`;
-                    faltantes.forEach(p => {
-                        const dif = calcularDiferencia(p.pedido, p.recibido);
-                        mensaje += `- ${p.codigo} - ${p.descripcion.substring(0, 25)}...\n`;
-                        mensaje += `  Pedido: ${p.pedido} | Recibido: ${p.recibido} | Dif: ${dif}\n`;
-                    });
-                } else if (faltantes.length > 10) {
-                    mensaje += `*Hay ${faltantes.length} productos con faltantes*\n`;
-                }
-
-                if (conPDF) {
-                    // CON PDF: Descargar primero y luego abrir WhatsApp
-                    mensaje += `\n\n*Ver detalle completo en PDF adjunto*\n`;
-                    mensaje += `(El PDF se descargo automaticamente - adjuntarlo desde la carpeta Descargas)`;
-                    
-                    setMensajeGuardado('📄 Descargando PDF...');
-                    
-                    // Generar y descargar PDF
-                    await exportarPDF();
-                    
-                    // Esperar un momento para que se complete la descarga
-                    setTimeout(() => {
-                        const mensajeCodificado = encodeURIComponent(mensaje);
-                        window.open(`https://wa.me/54${numeroLimpio}?text=${mensajeCodificado}`, '_blank');
-                        setMensajeGuardado('📱 Abriendo WhatsApp. Adjuntar el PDF descargado.');
-                        setTimeout(() => setMensajeGuardado(''), 5000);
-                    }, 1000);
-                    
-                } else {
-                    // SOLO TEXTO
-                    mensaje += `\n================================\n`;
-                    mensaje += `Sistema SAIEP - Control de Ordenes`;
-                    
-                    const mensajeCodificado = encodeURIComponent(mensaje);
-                    window.open(`https://wa.me/54${numeroLimpio}?text=${mensajeCodificado}`, '_blank');
-                    
-                    setMensajeGuardado('📱 Abriendo WhatsApp...');
-                    setTimeout(() => setMensajeGuardado(''), 3000);
-                }
-            };
-
-            const copiarReporte = async () => {
-                // Calcular totales
-                const totalPedido = productosSeleccionados.reduce((sum, p) => sum + p.pedido, 0);
-                const totalRecibido = productosSeleccionados.reduce((sum, p) => sum + p.recibido, 0);
-                const totalDif = totalRecibido - totalPedido;
-                const cumplimientoGlobal = calcularPorcentaje(totalPedido, totalRecibido);
-                
-                // Agrupar por estado
-                const completos = productosSeleccionados.filter(p => calcularDiferencia(p.pedido, p.recibido) >= 0);
-                const faltantes = productosSeleccionados.filter(p => calcularDiferencia(p.pedido, p.recibido) < 0);
-
-                // Crear reporte en texto plano
-                let reporte = `CONTROL DE ÓRDENES DE COMPRA\n`;
-                reporte += `===============================================\n`;
-                reporte += `Proveedor: ${proveedor}\n`;
-                reporte += `Sucursal: ${sucursal}\n`;
-                reporte += `Fecha: ${new Date().toLocaleDateString('es-AR')}\n`;
-                reporte += `===============================================\n\n`;
-
-                reporte += `📊 RESUMEN GENERAL\n`;
-                reporte += `Total Productos: ${productosSeleccionados.length}\n`;
-                reporte += `Total Pedido: ${totalPedido} unidades\n`;
-                reporte += `Total Recibido: ${totalRecibido} unidades\n`;
-                reporte += `Diferencia: ${totalDif > 0 ? '+' : ''}${totalDif} unidades\n`;
-                reporte += `Cumplimiento Global: ${cumplimientoGlobal}%\n\n`;
-
-                reporte += `✅ PRODUCTOS COMPLETOS: ${completos.length}\n`;
-                reporte += `❌ PRODUCTOS FALTANTES: ${faltantes.length}\n\n`;
-
-                // Agrupar por N° Orden
-                const ordenesUnicas = [...new Set(productosSeleccionados.map(p => p.nroOrden || 'MANUAL'))];
-                
-                ordenesUnicas.forEach(orden => {
-                    const prodsOrden = productosSeleccionados.filter(p => (p.nroOrden || 'MANUAL') === orden);
-                    
-                    reporte += `------------------------------------------------\n`;
-                    reporte += orden === 'MANUAL' ? `📝 PRODUCTOS MANUALES\n` : `📋 ORDEN N° ${orden}\n`;
-                    reporte += `------------------------------------------------\n`;
-                    
-                    prodsOrden.forEach(p => {
-                        const dif = calcularDiferencia(p.pedido, p.recibido);
-                        const estado = dif >= 0 ? '✅' : '❌';
-                        reporte += `${estado} ${p.codigo} - ${p.descripcion}\n`;
-                        reporte += `   Pedido: ${p.pedido} | Recibido: ${p.recibido} | Diferencia: ${dif > 0 ? '+' : ''}${dif}\n`;
-                    });
-                    reporte += `\n`;
-                });
-
-                reporte += `===============================================\n`;
-                reporte += `Generado por: Sistema SAIEP - Control de Órdenes\n`;
-                reporte += `Desarrollado por: Jonathan Cheves\n`;
-
-                // Copiar al portapapeles
-                try {
-                    await navigator.clipboard.writeText(reporte);
-                    setMensajeGuardado('📋 ¡Reporte copiado al portapapeles!');
-                } catch (err) {
-                    // Fallback para navegadores que no soportan clipboard API
-                    const textarea = document.createElement('textarea');
-                    textarea.value = reporte;
-                    document.body.appendChild(textarea);
-                    textarea.select();
-                    document.execCommand('copy');
-                    document.body.removeChild(textarea);
-                    setMensajeGuardado('📋 ¡Reporte copiado!');
-                }
-                
-                setTimeout(() => setMensajeGuardado(''), 3000);
-            };
-
-            const limpiarOrden = () => {
-                if (confirm('¿Está seguro de limpiar toda la orden? Esto eliminará todos los datos guardados.')) {
-                    setProductosSeleccionados([]);
-                    setProveedor('');
-                    setSucursal('');
-                    localStorage.removeItem('productosSeleccionados');
-                    localStorage.removeItem('proveedor');
-                    localStorage.removeItem('sucursal');
-                    setMensajeGuardado('🗑️ Datos eliminados');
-                    setTimeout(() => setMensajeGuardado(''), 2000);
-                }
-            };
-
-            // Agrupar productos por N° de Orden para visualización
             const productosAgrupados = productosSeleccionados.reduce((acc, p) => {
                 const orden = p.nroOrden || 'MANUAL';
                 if (!acc[orden]) acc[orden] = [];
@@ -1970,400 +1210,153 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
             }, {});
 
             return (
-                <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 p-4 md:p-8">
+                <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 p-4 md:p-8 font-sans">
                     <div className="max-w-7xl mx-auto">
-                        {mensajeGuardado && (
-                            <div className="fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg z-50 animate-pulse">
-                                {mensajeGuardado}
-                            </div>
-                        )}
-
+                        {mensajeGuardado && <div className="fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg z-50">{mensajeGuardado}</div>}
+                        
+                        {/* Modal Orden de Compra */}
                         {mostrarModalPDF && (
-                            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                                <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-                                    <div className="p-6 border-b">
-                                        <h2 className="text-2xl font-bold text-gray-800">Confirmar Carga de Orden</h2>
-                                        <p className="text-gray-600 mt-2">
-                                            Se encontraron <strong>{productosPDF.length} productos</strong> para 
-                                            <strong> {proveedor}</strong> - Sucursal <strong>{sucursal}</strong>
-                                            {nroOrdenPDF && <span> - OC <strong>{nroOrdenPDF}</strong></span>}
-                                        </p>
-                                        {proveedor === localStorage.getItem('proveedor') && productosSeleccionados.length > 0 && (
-                                            <p className="text-blue-600 mt-2 text-sm">
-                                                ℹ️ Los productos se <strong>agregarán</strong> a los existentes (mismo proveedor)
-                                            </p>
-                                        )}
+                            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                                <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[80vh] flex flex-col">
+                                    <div className="p-6 border-b bg-indigo-600 text-white rounded-t-xl">
+                                        <h2 className="text-xl font-bold">Confirmar Carga de Orden</h2>
                                     </div>
-                                    
-                                    <div className="p-6 overflow-y-auto flex-1">
+                                    <div className="p-6 overflow-y-auto">
                                         <table className="w-full text-sm">
-                                            <thead>
-                                                <tr className="bg-gray-100">
-                                                    <th className="p-2 text-left">Código</th>
-                                                    <th className="p-2 text-left">Descripción</th>
-                                                    <th className="p-2 text-center">Pedido</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {productosPDF.map((p, i) => (
-                                                    <tr key={i} className="border-b">
-                                                        <td className="p-2">{p.codigo}</td>
-                                                        <td className="p-2">{p.descripcion}</td>
-                                                        <td className="p-2 text-center font-bold">{p.pedido}</td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
+                                            <thead><tr className="bg-gray-100"><th className="p-2 text-left">Código</th><th className="p-2 text-left">Descripción</th><th className="p-2 text-center">Cant. Pedida</th></tr></thead>
+                                            <tbody>{productosPDF.map((p, i) => <tr key={i} className="border-b"><td className="p-2">{p.codigo}</td><td className="p-2">{p.descripcion}</td><td className="p-2 text-center font-bold">{p.pedido}</td></tr>)}</tbody>
                                         </table>
                                     </div>
-                                    
-                                    <div className="p-6 border-t flex justify-end space-x-3">
-                                        <button 
-                                            onClick={cancelarCargaPDF}
-                                            className="px-6 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600"
-                                        >
-                                            Cancelar
-                                        </button>
-                                        <button 
-                                            onClick={confirmarCargaPDF}
-                                            className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
-                                        >
-                                            ✅ Confirmar y Cargar
-                                        </button>
+                                    <div className="p-4 border-t flex justify-end gap-3">
+                                        <button onClick={() => setMostrarModalPDF(false)} className="px-4 py-2 bg-gray-200 rounded-lg">Cancelar</button>
+                                        <button onClick={confirmarCargaPDF} className="px-4 py-2 bg-indigo-600 text-white rounded-lg">Confirmar</button>
                                     </div>
                                 </div>
                             </div>
                         )}
 
+                        {/* Modal Recepción */}
                         {mostrarModalRecepcion && (
-                            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                                <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-                                    <div className="p-6 border-b bg-green-50">
-                                        <h2 className="text-2xl font-bold text-green-800">📦 Confirmar Recepción</h2>
-                                        <p className="text-gray-600 mt-2">
-                                            Se encontraron <strong>{recepcionPDF.length} productos recibidos</strong> que coinciden con la orden
-                                        </p>
-                                        <p className="text-green-600 mt-2 text-sm">
-                                            ✅ Las cantidades recibidas se actualizarán automáticamente
-                                        </p>
+                            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                                <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[80vh] flex flex-col">
+                                    <div className="p-6 border-b bg-green-600 text-white rounded-t-xl">
+                                        <h2 className="text-xl font-bold">Confirmar Recepción de Productos</h2>
                                     </div>
-                                    
-                                    <div className="p-6 overflow-y-auto flex-1">
+                                    <div className="p-6 overflow-y-auto">
                                         <table className="w-full text-sm">
-                                            <thead>
-                                                <tr className="bg-gray-100">
-                                                    <th className="p-2 text-left">Código</th>
-                                                    <th className="p-2 text-left">Descripción</th>
-                                                    <th className="p-2 text-center">Pedido</th>
-                                                    <th className="p-2 text-center">Recibido</th>
-                                                    <th className="p-2 text-center">Estado</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {recepcionPDF.map((p, i) => {
-                                                    const dif = p.pedido - p.pedidoOriginal;
-                                                    return (
-                                                        <tr key={i} className="border-b">
-                                                            <td className="p-2">{p.codigo}</td>
-                                                            <td className="p-2">{p.descripcion}</td>
-                                                            <td className="p-2 text-center">{p.pedidoOriginal}</td>
-                                                            <td className="p-2 text-center font-bold text-green-600">{p.pedido}</td>
-                                                            <td className="p-2 text-center">
-                                                                {dif === 0 ? (
-                                                                    <span className="text-green-600">✅ Completo</span>
-                                                                ) : dif > 0 ? (
-                                                                    <span className="text-blue-600">📦 +{dif}</span>
-                                                                ) : (
-                                                                    <span className="text-red-600">❌ {dif}</span>
-                                                                )}
-                                                            </td>
-                                                        </tr>
-                                                    );
-                                                })}
-                                            </tbody>
+                                            <thead><tr className="bg-gray-100"><th className="p-2 text-left">Código</th><th className="p-2 text-left">Descripción</th><th className="p-2 text-center">En Orden</th><th className="p-2 text-center">Recibido</th></tr></thead>
+                                            <tbody>{recepcionPDF.map((p, i) => <tr key={i} className="border-b"><td className="p-2">{p.codigo}</td><td className="p-2">{p.descripcion}</td><td className="p-2 text-center">{p.pedidoOriginal}</td><td className="p-2 text-center font-bold text-green-600">{p.pedido}</td></tr>)}</tbody>
                                         </table>
                                     </div>
-                                    
-                                    <div className="p-6 border-t flex justify-end space-x-3">
-                                        <button 
-                                            onClick={cancelarRecepcionPDF}
-                                            className="px-6 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600"
-                                        >
-                                            Cancelar
-                                        </button>
-                                        <button 
-                                            onClick={confirmarRecepcionPDF}
-                                            className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-                                        >
-                                            ✅ Actualizar Recepción
-                                        </button>
+                                    <div className="p-4 border-t flex justify-end gap-3">
+                                        <button onClick={() => setMostrarModalRecepcion(false)} className="px-4 py-2 bg-gray-200 rounded-lg">Cancelar</button>
+                                        <button onClick={confirmarRecepcionPDF} className="px-4 py-2 bg-green-600 text-white rounded-lg">Actualizar Cantidades</button>
                                     </div>
                                 </div>
                             </div>
                         )}
 
-                        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-                            <div className="flex justify-between items-center mb-4">
-                                <h1 className="text-3xl font-bold text-indigo-600">Control de Órdenes de Compra</h1>
-                                <div className="text-sm text-gray-500">
-                                    <i className="fas fa-save"></i> Guardado automático
-                                </div>
-                            </div>
+                        <div className="bg-white rounded-2xl shadow-xl p-6 mb-8 border border-indigo-100">
+                            <h1 className="text-3xl font-extrabold text-indigo-700 mb-6 flex items-center gap-3">
+                                <i className="fas fa-clipboard-check"></i> Control de Órdenes de Compra
+                            </h1>
 
-                            <div className="mb-6 p-4 bg-blue-50 border-2 border-blue-200 rounded-lg">
-                                <div className="flex items-center justify-between mb-2">
-                                    <div>
-                                        <h3 className="text-lg font-semibold text-blue-800">
-                                            <i className="fas fa-file-pdf"></i> Cargar Orden desde PDF
-                                        </h3>
-                                        <p className="text-sm text-blue-600">Subir PDF de Orden de Compra para cargar automáticamente los productos</p>
-                                    </div>
-                                    <label className="cursor-pointer">
-                                        <input
-                                            type="file"
-                                            accept=".pdf"
-                                            onChange={handleCargarPDF}
-                                            className="hidden"
-                                            disabled={cargandoPDF}
-                                        />
-                                        <div className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center space-x-2">
-                                            {cargandoPDF ? (
-                                                <>
-                                                    <i className="fas fa-spinner fa-spin"></i>
-                                                    <span>Procesando...</span>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <i className="fas fa-upload"></i>
-                                                    <span>Seleccionar PDF</span>
-                                                </>
-                                            )}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                                <div className="p-4 bg-indigo-50 rounded-xl border-2 border-indigo-100">
+                                    <h3 className="font-bold text-indigo-800 mb-3"><i className="fas fa-file-import mr-2"></i>Cargar Orden de Compra</h3>
+                                    <label className="flex flex-col items-center justify-center w-full h-24 border-2 border-indigo-300 border-dashed rounded-lg cursor-pointer hover:bg-indigo-100 transition-all">
+                                        <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                                            <i className="fas fa-cloud-upload-alt text-2xl text-indigo-500 mb-2"></i>
+                                            <p className="text-sm text-indigo-600">Subir PDF de Orden</p>
                                         </div>
+                                        <input type="file" className="hidden" accept=".pdf" onChange={handleCargarPDF} disabled={cargandoPDF} />
                                     </label>
+                                    {errorPDF && <p className="text-red-500 text-xs mt-2">{errorPDF}</p>}
                                 </div>
-                                {errorPDF && (
-                                    <div className="mt-2 p-3 bg-red-100 border border-red-300 rounded text-red-700 text-sm">
-                                        <i className="fas fa-exclamation-circle"></i> {errorPDF}
-                                    </div>
-                                )}
-                                {nroOrdenPDF && (
-                                    <div className="mt-2 p-3 bg-indigo-100 border-2 border-indigo-400 rounded-lg">
-                                        <div className="flex items-center justify-between">
-                                            <div>
-                                                <span className="text-sm font-semibold text-indigo-700">OC Cargada:</span>
-                                                <span className="ml-2 text-lg font-bold text-indigo-900"># {nroOrdenPDF}</span>
-                                            </div>
-                                            <i className="fas fa-check-circle text-indigo-600 text-xl"></i>
+
+                                <div className="p-4 bg-green-50 rounded-xl border-2 border-green-100">
+                                    <h3 className="font-bold text-green-800 mb-3"><i className="fas fa-truck-loading mr-2"></i>Cargar Recepción Física</h3>
+                                    <label className="flex flex-col items-center justify-center w-full h-24 border-2 border-green-300 border-dashed rounded-lg cursor-pointer hover:bg-green-100 transition-all">
+                                        <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                                            <i className="fas fa-file-invoice text-2xl text-green-500 mb-2"></i>
+                                            <p className="text-sm text-green-600">Subir PDF de Recepción</p>
                                         </div>
-                                    </div>
-                                )}
+                                        <input type="file" className="hidden" accept=".pdf" onChange={handleCargarPDFRecepcion} disabled={cargandoPDFRecepcion} />
+                                    </label>
+                                    {errorPDFRecepcion && <p className="text-red-500 text-xs mt-2">{errorPDFRecepcion}</p>}
+                                </div>
                             </div>
 
-                            {productosSeleccionados.length > 0 && (
-                                <div className="mb-6 p-4 bg-green-50 border-2 border-green-200 rounded-lg">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <div>
-                                            <h3 className="text-lg font-semibold text-green-800">
-                                                <i className="fas fa-box-open"></i> Cargar Recepción desde PDF
-                                            </h3>
-                                            <p className="text-sm text-green-600">Subir PDF con las cantidades recibidas para actualizar automáticamente</p>
-                                        </div>
-                                        <label className="cursor-pointer">
-                                            <input
-                                                type="file"
-                                                accept=".pdf"
-                                                onChange={handleCargarPDFRecepcion}
-                                                className="hidden"
-                                                disabled={cargandoPDFRecepcion}
-                                            />
-                                            <div className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center space-x-2">
-                                                {cargandoPDFRecepcion ? (
-                                                    <>
-                                                        <i className="fas fa-spinner fa-spin"></i>
-                                                        <span>Procesando...</span>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <i className="fas fa-box-open"></i>
-                                                        <span>Cargar Recepción</span>
-                                                    </>
-                                                )}
-                                            </div>
-                                        </label>
-                                    </div>
-                                    {errorPDFRecepcion && (
-                                        <div className="mt-2 p-3 bg-red-100 border border-red-300 rounded text-red-700 text-sm">
-                                            <i className="fas fa-exclamation-circle"></i> {errorPDFRecepcion}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                            
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Proveedor</label>
-                                    <select 
-                                        className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                                        value={proveedor}
-                                        onChange={(e) => setProveedor(e.target.value)}
-                                    >
-                                        <option value="">Seleccione proveedor</option>
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">Proveedor</label>
+                                    <select className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" value={proveedor} onChange={e => setProveedor(e.target.value)}>
+                                        <option value="">Seleccione...</option>
                                         {proveedores.map(p => <option key={p} value={p}>{p}</option>)}
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Sucursal</label>
-                                    <select 
-                                        className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                                        value={sucursal}
-                                        onChange={(e) => setSucursal(e.target.value)}
-                                    >
-                                        <option value="">Seleccione sucursal</option>
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">Sucursal</label>
+                                    <select className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" value={sucursal} onChange={e => setSucursal(e.target.value)}>
+                                        <option value="">Seleccione...</option>
                                         {sucursales.map(s => <option key={s} value={s}>{s}</option>)}
                                     </select>
                                 </div>
                             </div>
-
-                            {proveedor && (
-                                <div className="mb-6">
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Buscar producto</label>
-                                    <input
-                                        type="text"
-                                        className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                                        placeholder="Código, descripción o marca..."
-                                        value={busqueda}
-                                        onChange={(e) => setBusqueda(e.target.value)}
-                                    />
-                                    
-                                    {busqueda && (
-                                        <div className="mt-2 max-h-60 overflow-y-auto border border-gray-200 rounded-lg">
-                                            {productosFiltrados.map(p => (
-                                                <div key={p.codigo} className="p-3 hover:bg-gray-50 border-b cursor-pointer flex justify-between items-center"
-                                                     onClick={() => agregarProducto(p)}>
-                                                    <div>
-                                                        <div className="font-medium">{p.codigo} - {p.descripcion}</div>
-                                                        <div className="text-sm text-gray-600">{p.marca} | Bulto: {p.bulto} | {p.contenido} {p.unidad}</div>
-                                                    </div>
-                                                    <button className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
-                                                        Agregar
-                                                    </button>
-                                                </div>
-                                            ))}
-                                            {productosFiltrados.length === 0 && (
-                                                <div className="p-4 text-center text-gray-500">
-                                                    No se encontraron productos
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
                         </div>
 
                         {productosSeleccionados.length > 0 && (
-                            <div className="bg-white rounded-lg shadow-lg p-6">
-                                <div className="flex justify-between items-center mb-4">
-                                    <h2 className="text-2xl font-bold text-gray-800">
-                                        Orden Actual ({productosSeleccionados.length} productos)
-                                    </h2>
-                                    <div className="space-x-2">
-                                        <button 
-                                            onClick={enviarPorWhatsApp}
-                                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-                                            title="Enviar reporte por WhatsApp"
-                                        >
-                                            📱 WhatsApp
-                                        </button>
-                                        <button 
-                                            onClick={copiarReporte}
-                                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                                            title="Copiar reporte al portapapeles"
-                                        >
-                                            📋 Copiar
-                                        </button>
-                                        <button 
-                                            onClick={exportarPDF}
-                                            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-                                            title="Exportar a PDF"
-                                        >
-                                            📄 Exportar PDF
-                                        </button>
-                                        <button 
-                                            onClick={limpiarOrden}
-                                            className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
-                                            title="Limpiar toda la orden"
-                                        >
-                                            🗑️ Limpiar
-                                        </button>
+                            <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100">
+                                <div className="p-6 bg-gray-800 text-white flex justify-between items-center">
+                                    <h2 className="text-xl font-bold">Listado de Control</h2>
+                                    <div className="flex gap-2">
+                                        <button onClick={exportarPDF} className="px-4 py-2 bg-red-500 hover:bg-red-600 rounded-lg transition-colors"><i className="fas fa-file-pdf mr-2"></i>PDF</button>
+                                        <button onClick={() => { if(confirm('¿Limpiar todo?')) setProductosSeleccionados([]); }} className="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg transition-colors"><i className="fas fa-trash"></i></button>
                                     </div>
                                 </div>
 
-                                <div className="overflow-x-auto">
+                                <div className="p-6 overflow-x-auto">
                                     {Object.keys(productosAgrupados).map(orden => (
-                                        <div key={orden} className="mb-6">
-                                            <div className="bg-indigo-100 px-4 py-2 mb-2 rounded">
-                                                <h3 className="font-bold text-indigo-800">
-                                                    {orden === 'MANUAL' ? '📝 Productos Agregados Manualmente' : `📋 Orden de Compra N° ${orden}`}
-                                                </h3>
+                                        <div key={orden} className="mb-8">
+                                            <div className="bg-indigo-50 p-3 rounded-t-xl border-x border-t border-indigo-100">
+                                                <h3 className="font-bold text-indigo-800">Orden: {orden}</h3>
                                             </div>
-                                            <table className="w-full">
+                                            <table className="w-full border-collapse">
                                                 <thead>
-                                                    <tr className="bg-indigo-600 text-white">
-                                                        <th className="p-2 text-left">Código</th>
-                                                        <th className="p-2 text-left">Descripción</th>
-                                                        <th className="p-2 text-left">Marca</th>
-                                                        <th className="p-2 text-center">Bulto</th>
-                                                        <th className="p-2 text-center">Pedido</th>
-                                                        <th className="p-2 text-center">Recibido</th>
-                                                        <th className="p-2 text-center">Diferencia</th>
-                                                        <th className="p-2 text-center">Estado</th>
-                                                        <th className="p-2 text-center">%</th>
-                                                        <th className="p-2"></th>
+                                                    <tr className="bg-indigo-600 text-white text-xs uppercase tracking-wider">
+                                                        <th className="p-3 text-left">Código</th>
+                                                        <th className="p-3 text-left">Descripción</th>
+                                                        <th className="p-3 text-center">Bulto</th>
+                                                        <th className="p-3 text-center">Pedido</th>
+                                                        <th className="p-3 text-center">Recibido</th>
+                                                        <th className="p-3 text-center">Diferencia</th>
+                                                        <th className="p-3 text-center">Estado</th>
+                                                        <th className="p-3"></th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    {productosAgrupados[orden].map((p) => {
+                                                    {productosAgrupados[orden].map(p => {
                                                         const dif = calcularDiferencia(p.pedido, p.recibido);
-                                                        const pct = calcularPorcentaje(p.pedido, p.recibido);
-                                                        const completo = dif >= 0 && pct >= 100;
-                                                        const uniqueKey = p.codigo + '-' + (p.nroOrden || 'manual');
+                                                        const isOk = dif >= 0 && p.recibido > 0;
                                                         return (
-                                                            <tr key={uniqueKey} className={'border-b ' + (completo ? 'bg-green-50' : 'bg-red-50')}>
-                                                                <td className="p-2">{p.codigo}</td>
-                                                                <td className="p-2">{p.descripcion}</td>
-                                                                <td className="p-2">{p.marca}</td>
-                                                                <td className="p-2 text-center">{p.bulto}</td>
-                                                                <td className="p-2">
-                                                                    <input 
-                                                                        type="number" 
-                                                                        className="w-20 p-1 border rounded text-center"
-                                                                        value={p.pedido}
-                                                                        onChange={(e) => actualizarCantidad(p.codigo, p.nroOrden, 'pedido', e.target.value)}
-                                                                    />
+                                                            <tr key={p.codigo + orden} className={`border-b hover:bg-gray-50 transition-colors ${!isOk && p.recibido > 0 ? 'bg-red-50' : ''}`}>
+                                                                <td className="p-3 text-sm font-medium">{p.codigo}</td>
+                                                                <td className="p-3 text-sm">{p.descripcion} <br/><span className="text-xs text-gray-400">{p.marca}</span></td>
+                                                                <td className="p-3 text-center text-sm">{p.bulto}</td>
+                                                                <td className="p-3 text-center">
+                                                                    <input type="number" className="w-16 p-1 border rounded text-center" value={p.pedido} onChange={e => actualizarCantidad(p.codigo, p.nroOrden, 'pedido', e.target.value)} />
                                                                 </td>
-                                                                <td className="p-2">
-                                                                    <input 
-                                                                        type="number" 
-                                                                        className="w-20 p-1 border rounded text-center"
-                                                                        value={p.recibido}
-                                                                        onChange={(e) => actualizarCantidad(p.codigo, p.nroOrden, 'recibido', e.target.value)}
-                                                                    />
+                                                                <td className="p-3 text-center">
+                                                                    <input type="number" className="w-16 p-1 border-2 border-indigo-200 rounded text-center font-bold" value={p.recibido} onChange={e => actualizarCantidad(p.codigo, p.nroOrden, 'recibido', e.target.value)} />
                                                                 </td>
-                                                                <td className={'p-2 text-center font-bold ' + (dif > 0 ? 'text-green-600' : dif < 0 ? 'text-red-600' : 'text-gray-600')}>
-                                                                    {dif > 0 ? '+' : ''}{formatearNumero(dif)}
-                                                                </td>
-                                                                <td className="p-2 text-center">
-                                                                    <span className={'px-2 py-1 rounded ' + (completo ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800')}>
-                                                                        {completo ? '✅ Completo' : '❌ Faltante'}
+                                                                <td className={`p-3 text-center font-bold ${dif < 0 ? 'text-red-500' : 'text-green-500'}`}>{dif > 0 ? '+' : ''}{formatearNumero(dif)}</td>
+                                                                <td className="p-3 text-center">
+                                                                    <span className={`px-2 py-1 rounded-full text-xs font-bold ${isOk ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                                        {dif >= 0 ? 'COMPLETO' : 'FALTANTE'}
                                                                     </span>
                                                                 </td>
-                                                                <td className="p-2 text-center font-bold">{pct}%</td>
-                                                                <td className="p-2 text-center">
-                                                                    <button 
-                                                                        onClick={() => eliminarProducto(p.codigo, p.nroOrden)}
-                                                                        className="text-red-600 hover:text-red-800"
-                                                                    >
-                                                                        ❌
-                                                                    </button>
+                                                                <td className="p-3 text-center">
+                                                                    <button onClick={() => eliminarProducto(p.codigo, p.nroOrden)} className="text-gray-300 hover:text-red-500 transition-colors"><i className="fas fa-times"></i></button>
                                                                 </td>
                                                             </tr>
                                                         );
@@ -2372,57 +1365,10 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
                                             </table>
                                         </div>
                                     ))}
-                                    
-                                    <div className="mt-4">
-                                        <table className="w-full">
-                                            <tfoot>
-                                                <tr className="bg-gray-800 text-white font-bold">
-                                                    <td colSpan="4" className="p-2 text-right">TOTALES:</td>
-                                                    <td className="p-2 text-center">
-                                                        {productosSeleccionados.reduce((sum, p) => sum + p.pedido, 0)}
-                                                    </td>
-                                                    <td className="p-2 text-center">
-                                                        {productosSeleccionados.reduce((sum, p) => sum + p.recibido, 0)}
-                                                    </td>
-                                                    <td className="p-2 text-center">
-                                                        {productosSeleccionados.reduce((sum, p) => sum + calcularDiferencia(p.pedido, p.recibido), 0)}
-                                                    </td>
-                                                    <td colSpan="3" className="p-2 text-center">
-                                                        {calcularPorcentaje(
-                                                            productosSeleccionados.reduce((sum, p) => sum + p.pedido, 0),
-                                                            productosSeleccionados.reduce((sum, p) => sum + p.recibido, 0)
-                                                        )}% Cumplimiento Global
-                                                    </td>
-                                                </tr>
-                                            </tfoot>
-                                        </table>
-                                    </div>
                                 </div>
                             </div>
                         )}
-
-                        {productosSeleccionados.length === 0 && proveedor && sucursal && (
-                            <div className="bg-white rounded-lg shadow-lg p-12 text-center">
-                                <i className="fas fa-box-open text-6xl text-gray-300 mb-4"></i>
-                                <h3 className="text-xl text-gray-600 mb-2">No hay productos en la orden</h3>
-                                <p className="text-gray-500">Busca y agrega productos manualmente o carga un PDF</p>
-                            </div>
-                        )}
                     </div>
-
-                    <footer className="mt-12 pt-8 border-t border-gray-200 text-center text-gray-600">
-                        <div className="space-y-2">
-                            <div>
-                                <i className="fas fa-code"></i> Desarrollado por <strong>Jonathan Cheves</strong>
-                            </div>
-                            <div>
-                                <i className="fas fa-building"></i> Sucursales de Neuquén Ciudad | <strong>SAIEP</strong>
-                            </div>
-                            <div className="text-sm text-gray-500">
-                                <i className="fas fa-copyright"></i> 2025 SAIEP - Todos los derechos reservados
-                            </div>
-                        </div>
-                    </footer>
                 </div>
             );
         }
