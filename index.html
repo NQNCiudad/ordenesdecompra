@@ -1064,11 +1064,32 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
                     sucursalDetectada = matchSucursal[1];
                 }
 
-                // NUEVO: Detectar número de orden
+                // NUEVO: Detectar número de orden - Manejar formato con columnas
                 let nroOrden = '';
-                const matchOrden = texto.match(/(?:N[uú]mero|Nro\.Expedici[oó]n|Expedici[oó]n|Nro\.Orden Compra)[:.\s]*(\d+)/i);
-                if (matchOrden) {
-                    nroOrden = matchOrden[1];
+                
+                // DEBUG: Mostrar primeras líneas del PDF
+                console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                console.log('🔍 DEBUG: Primeras 300 caracteres del PDF:');
+                console.log(texto.substring(0, 300));
+                console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                
+                // Buscar "Número:" seguido EVENTUALMENTE de 7-8 dígitos
+                // Permite texto entre medio (como "Fecha:") porque el PDF tiene columnas
+                const matchNumero = texto.match(/Número:[^0-9]*(\d{7,8})/i);
+                
+                if (matchNumero) {
+                    nroOrden = matchNumero[1];
+                    console.log(`✅ Número de OC CAPTURADO: ${nroOrden} (patrón flexible)`);
+                } else {
+                    console.log(`⚠️ NO se encontró patrón "Número: ... XXXXXXXX"`);
+                    // Fallback: buscar "Nro.Orden Compra" en recepción
+                    const matchOrden = texto.match(/Nro\.Orden Compra[:.\s]*(\d+)/i);
+                    if (matchOrden) {
+                        nroOrden = matchOrden[1];
+                        console.log(`✅ Número de OC CAPTURADO (fallback): ${nroOrden}`);
+                    } else {
+                        console.log(`❌ No se pudo detectar número de OC con ningún patrón`);
+                    }
                 }
 
                 console.log('============================================');
@@ -1132,16 +1153,30 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
                         const matchCant = contexto.match(/(GR|CM3|KGR?|LTS?|CU)\s+(\d+[\.,]?\d*)/i);
                         if (matchCant) {
                             const valorStr = matchCant[2].replace(',', '.');
-                            cantidad = Math.floor(parseFloat(valorStr));
-                            console.log(`   [030] ${codigo} → ${matchCant[1]} → Cant: ${cantidad}`);
+                            const valor = parseFloat(valorStr);
+                            
+                            // Validar que sea un rango razonable para cantidad (no precio)
+                            if (valor >= 0.1 && valor <= 500) {
+                                cantidad = valor;
+                                console.log(`   [030] ${codigo} → ${matchCant[1]} → Cant: ${cantidad}`);
+                            } else {
+                                console.log(`   ⚠️ [030] ${codigo} → Valor ${valor} fuera de rango (0.1-500), probablemente es precio`);
+                            }
                         }
                     } else if (tipo === '005') {
                         // Para 005 (BEBIDAS): buscar "CM3" seguido de cantidad con formato X.XX
                         const matchCant = contexto.match(/CM3\s+([\d]+[\.,]?\d*)/i);
                         if (matchCant) {
                             const valorStr = matchCant[1].replace(',', '.');
-                            cantidad = Math.floor(parseFloat(valorStr));
-                            console.log(`   [005] ${codigo} → CM3 → "${matchCant[1]}" → Cant: ${cantidad}`);
+                            const valor = parseFloat(valorStr);
+                            
+                            // Validar rango razonable para cantidad
+                            if (valor >= 0.1 && valor <= 500) {
+                                cantidad = valor;
+                                console.log(`   [005] ${codigo} → CM3 → "${matchCant[1]}" → Cant: ${cantidad}`);
+                            } else {
+                                console.log(`   ⚠️ [005] ${codigo} → Valor ${valor} fuera de rango (0.1-500), probablemente es precio`);
+                            }
                         }
                     }
 
@@ -1264,8 +1299,8 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
 
                     // PATRÓN BASADO EN ESTRUCTURA DE COLUMNAS DEL PDF
                     // Estructura: ... Bto Cont U/M Cant Costo %Bon %Iva
-                    // Ejemplo: "... 1   159  GR  24   739.56  11.00 21.00"
-                    // Buscamos: U/M seguido de hasta 3 números, queremos el primero que sea < 1000
+                    // Ejemplo: "... 1   330  CM3  12   2858.00  0.00 21.00"
+                    // IMPORTANTE: La cantidad siempre es pequeña (1-500), el costo es grande (>1000)
                     
                     const matchUM = contexto.match(/\b(CU|GR|CM3|KGR?|LTS?)\b/i);
                     
@@ -1274,26 +1309,29 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
                         
                         // Extraer texto DESPUÉS de U/M
                         const despuesUM = contexto.substring(matchUM.index + matchUM[0].length);
-                        console.log(`   Después U/M: "${despuesUM.substring(0, 60)}"`);
+                        console.log(`   Después U/M: "${despuesUM.substring(0, 80)}"`);
                         
-                        // Buscar el PRIMER número que NO sea parte de un decimal
-                        // y que sea razonable para una cantidad (1-999)
-                        // IMPORTANTE: (?!\d|\.) asegura que después NO viene dígito NI punto (evita 739 de 739.56)
-                        const matchCant = despuesUM.match(/\s+(\d{1,3})(?!\d|\.)/);
+                        // ESTRATEGIA: Buscar SOLO números pequeños (para evitar costos)
+                        // Captura: 12, 5.8, 24 pero NO 2858.00, 5960.00
                         
-                        if (matchCant) {
-                            const num = parseInt(matchCant[1]);
-                            console.log(`   Primer número después de U/M: ${num}`);
-                            
-                            // Tomar el número si es razonable (1-999)
-                            if (num >= 1 && num <= 999) {
+                        // Patrón: número de 1-3 dígitos con máximo 2 decimales
+                        // CLAVE: Debe tener espacio después (no ser parte de 2858.00)
+                        const matches = despuesUM.matchAll(/\s+(\d{1,3}(?:\.\d{1,2})?)\s/g);
+                        const numerosEncontrados = Array.from(matches).map(m => parseFloat(m[1]));
+                        
+                        console.log(`   Números encontrados después de U/M: ${numerosEncontrados.join(', ')}`);
+                        
+                        // Tomar el PRIMER número razonable (1-500)
+                        for (const num of numerosEncontrados) {
+                            if (num >= 0.1 && num <= 500) {
                                 cantidad = num;
                                 console.log(`✅ [RECEP] ${codigo} → ${matchUM[1]} ${cantidad}`);
-                            } else {
-                                console.log(`❌ [RECEP] ${codigo} → ${num} fuera de rango (1-999)`);
+                                break;
                             }
-                        } else {
-                            console.log(`❌ [RECEP] ${codigo} → No se encontró número después de U/M`);
+                        }
+                        
+                        if (cantidad === 0) {
+                            console.log(`❌ [RECEP] ${codigo} → No se encontró cantidad válida (encontrados: ${numerosEncontrados.join(', ')})`);
                         }
                     } else {
                         console.log(`❌ [RECEP] ${codigo} → No se encontró U/M`);
@@ -1429,6 +1467,23 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
                     // NUEVO: Usar función especial para recepciones
                     const resultado = parsearPDFRecepcion(texto);
 
+                    // VALIDAR NÚMERO DE OC - asegurar que coincide
+                    if (resultado.nroOrden && nroOrdenPDF && resultado.nroOrden !== nroOrdenPDF) {
+                        const confirmar = confirm(
+                            `⚠️ ADVERTENCIA: El número de OC no coincide\n\n` +
+                            `OC cargada: ${nroOrdenPDF}\n` +
+                            `Recepción: ${resultado.nroOrden}\n\n` +
+                            `¿Desea continuar de todos modos?`
+                        );
+                        if (!confirmar) {
+                            setCargandoPDFRecepcion(false);
+                            setErrorPDFRecepcion('Carga cancelada - Números de OC no coinciden');
+                            return;
+                        }
+                    } else if (resultado.nroOrden && nroOrdenPDF && resultado.nroOrden === nroOrdenPDF) {
+                        console.log(`✅ Validación: Número de OC coincide (${nroOrdenPDF})`);
+                    }
+
                     if (resultado.productos.length === 0) {
                         setErrorPDFRecepcion('No se encontraron productos en el PDF de recepción');
                         setCargandoPDFRecepcion(false);
@@ -1538,7 +1593,7 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
 
             const actualizarCantidad = (codigo, nroOrden, campo, valor) => {
                 setProductosSeleccionados(productosSeleccionados.map(p => 
-                    (p.codigo === codigo && p.nroOrden === nroOrden) ? { ...p, [campo]: parseInt(valor) || 0 } : p
+                    (p.codigo === codigo && p.nroOrden === nroOrden) ? { ...p, [campo]: parseFloat(valor) || 0 } : p
                 ));
             };
 
@@ -1553,6 +1608,12 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
             const calcularPorcentaje = (pedido, recibido) => {
                 if (pedido === 0) return 100;
                 return Math.round((recibido / pedido) * 100);
+            };
+            
+            // Formatear número: mostrar máximo 2 decimales, eliminar .00 si es entero
+            const formatearNumero = (num) => {
+                if (Number.isInteger(num)) return num;
+                return Math.round(num * 100) / 100; // Redondea a 2 decimales
             };
 
             const exportarXLSX = () => {
@@ -1594,7 +1655,7 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
                 const cumplimientoGlobal = calcularPorcentaje(totalPedido, totalRecibido);
                 
                 datosExcel.push([]);
-                datosExcel.push(['', '', '', '', 'TOTALES', totalPedido, totalRecibido, totalDif, `${cumplimientoGlobal}% Cumplimiento`, '']);
+                datosExcel.push(['', '', '', '', 'TOTALES', formatearNumero(totalPedido), formatearNumero(totalRecibido), formatearNumero(totalDif), `${cumplimientoGlobal}% Cumplimiento`, '']);
                 
                 // Crear libro de trabajo
                 const wb = XLSX.utils.book_new();
@@ -1653,9 +1714,9 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
                         p.descripcion.substring(0, 35) + (p.descripcion.length > 35 ? '...' : ''),
                         p.marca,
                         p.bulto,
-                        p.pedido,
-                        p.recibido,
-                        (dif > 0 ? '+' : '') + dif,
+                        formatearNumero(p.pedido),
+                        formatearNumero(p.recibido),
+                        (dif > 0 ? '+' : '') + formatearNumero(dif),
                         estado,
                         pct + '%'
                     ];
@@ -1672,7 +1733,7 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
                     startY: 40,
                     head: [['N Orden', 'Codigo', 'Descripcion', 'Marca', 'Bulto', 'Pedido', 'Recibido', 'Dif.', 'Estado', '%']],
                     body: datosTabla,
-                    foot: [['', '', '', '', 'TOTALES', totalPedido, totalRecibido, (totalDif > 0 ? '+' : '') + totalDif, cumplimientoGlobal + '%', '']],
+                    foot: [['', '', '', '', 'TOTALES', formatearNumero(totalPedido), formatearNumero(totalRecibido), (totalDif > 0 ? '+' : '') + formatearNumero(totalDif), cumplimientoGlobal + '%', '']],
                     theme: 'grid',
                     headStyles: { 
                         fillColor: [79, 70, 229], // Indigo
@@ -2084,6 +2145,17 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
                                         <i className="fas fa-exclamation-circle"></i> {errorPDF}
                                     </div>
                                 )}
+                                {nroOrdenPDF && (
+                                    <div className="mt-2 p-3 bg-indigo-100 border-2 border-indigo-400 rounded-lg">
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <span className="text-sm font-semibold text-indigo-700">OC Cargada:</span>
+                                                <span className="ml-2 text-lg font-bold text-indigo-900"># {nroOrdenPDF}</span>
+                                            </div>
+                                            <i className="fas fa-check-circle text-indigo-600 text-xl"></i>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             {productosSeleccionados.length > 0 && (
@@ -2277,7 +2349,7 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
                                                                     />
                                                                 </td>
                                                                 <td className={'p-2 text-center font-bold ' + (dif > 0 ? 'text-green-600' : dif < 0 ? 'text-red-600' : 'text-gray-600')}>
-                                                                    {dif > 0 ? '+' : ''}{dif}
+                                                                    {dif > 0 ? '+' : ''}{formatearNumero(dif)}
                                                                 </td>
                                                                 <td className="p-2 text-center">
                                                                     <span className={'px-2 py-1 rounded ' + (completo ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800')}>
