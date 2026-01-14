@@ -955,7 +955,7 @@ MASTELLONE|3461580|DULCE DE LECHE|SER|12|400|GR
 MASTELLONE|3461592|DULCE DE LECHE ZERO LACTOSA|LA SERENISIMA|12|250|GR
 MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
 
-        function parseProductos() {
+         function parseProductos() {
             const lines = productosData.trim().split('\n');
             return lines.map(line => {
                 const parts = line.split('|');
@@ -973,8 +973,48 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
 
         const productos = parseProductos();
         const proveedores = ['QUILMES', 'CCU', 'COCA COLA', 'DANONE', 'MASTELLONE'];
-        const sucursales = ['006', '068', '162', '225', '226', '229', '232', '233', '235', '236', '237', '239', '240', '248', '254', '007',
-                            '010', '042',	'048', '051', '053', '092',	'164', '195', '238', '241', '242', '243', '246', '265', '363'];
+        
+        // CONFIGURACIÓN DINÁMICA DE SUCURSALES
+        const GOOGLE_SHEETS_CONFIG_URL = 'https://script.google.com/macros/s/AKfycbzg-kMOIuj4hgogKdaZPddDqfS6nmykuJa8VeyZOvrf9OhRbtR6l9-PbKBI70teM3BA/exec';
+        
+        let sucursales = [
+            '006', '068', '162', '225', '226', '229', '232', '233', '235', '236', '237', '239', '240', '248', '254',
+            '050', '076', '172', '182', '188', '213', '228', '230', '234', '247', '259', '266', '356', '357',
+            '007', '010', '042', '048', '051', '053', '092', '164', '195', '238', '241', '242', '243', '246', '265', '363', '063',
+            '012', '013', '014', '016', '044', '045', '134', '167', '181', '207', '064',
+            '011', '046', '047', '069', '163', '208', '215', '216', '079'
+        ]; // 66 sucursales por defecto (incluye depósitos)
+        
+        // Función para cargar configuración de sucursales desde Google Sheets
+        async function cargarConfiguracionSucursales() {
+            try {
+                console.log('📋 Cargando configuración de sucursales desde Google Sheets...');
+                
+                const response = await fetch(`${GOOGLE_SHEETS_CONFIG_URL}?action=getConfig`);
+                const config = await response.json();
+                
+                if (config.sucursales && config.sucursales.length > 0) {
+                    sucursales = config.sucursales;
+                    console.log('✅ Configuración cargada: ' + sucursales.length + ' sucursales');
+                    console.log('   Sucursales: ' + sucursales.join(', '));
+                    
+                    // Si hay zonas, también guardarlas
+                    if (config.zonas) {
+                        window.zonasSucursales = config.zonas;
+                        console.log('   Zonas: ' + Object.keys(config.zonas).join(', '));
+                    }
+                    
+                    return true;
+                } else {
+                    console.log('⚠️ Configuración vacía, usando valores por defecto');
+                    return false;
+                }
+                
+            } catch (error) {
+                console.warn('⚠️ Error al cargar configuración de sucursales, usando valores por defecto:', error);
+                return false;
+            }
+        }
         
         // Función para normalizar nombres de proveedores (ya no es necesaria, pero la mantengo por compatibilidad)
         const normalizarProveedor = (proveedor) => {
@@ -986,8 +1026,20 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
                 return localStorage.getItem('proveedor') || '';
             });
             
+            const [zona, setZona] = useState(() => {
+                return localStorage.getItem('zona') || '';
+            });
+            
             const [sucursal, setSucursal] = useState(() => {
                 return localStorage.getItem('sucursal') || '';
+            });
+            
+            const [zonas, setZonas] = useState({
+                'NEUQUEN CIUDAD': ['006', '068', '162', '225', '226', '229', '232', '233', '235', '236', '237', '239', '240', '248', '254'],
+                'NEUQUEN INTERIOR': ['050', '076', '172', '182', '188', '213', '228', '230', '234', '247', '259', '266', '356', '357'],
+                'RIO NEGRO': ['007', '010', '042', '048', '051', '053', '092', '164', '195', '238', '241', '242', '243', '246', '265', '363', '063'],
+                'TRELEW': ['012', '013', '014', '016', '044', '045', '134', '167', '181', '207', '064'],
+                'VIEDMA': ['011', '046', '047', '069', '163', '208', '215', '216', '079']
             });
             
             const [productosSeleccionados, setProductosSeleccionados] = useState(() => {
@@ -1009,12 +1061,40 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
             const [mostrarModalRecepcion, setMostrarModalRecepcion] = useState(false);
             const [recepcionPDF, setRecepcionPDF] = useState([]);
 
+            // Cargar configuración desde Google Sheets al montar
+            useEffect(() => {
+                const cargarConfig = async () => {
+                    await cargarConfiguracionSucursales();
+                    
+                    // Si Google Sheets provee zonas, actualizarlas
+                    if (window.zonasSucursales) {
+                        setZonas(window.zonasSucursales);
+                        console.log('✅ Zonas actualizadas desde Google Sheets');
+                    }
+                };
+                cargarConfig();
+            }, []);
+
             useEffect(() => {
                 localStorage.setItem('proveedor', proveedor);
                 if (proveedor) {
                     mostrarMensajeGuardado();
                 }
             }, [proveedor]);
+
+            useEffect(() => {
+                localStorage.setItem('zona', zona);
+                if (zona) {
+                    mostrarMensajeGuardado();
+                }
+            }, [zona]);
+
+            // Limpiar sucursal cuando cambia la zona
+            useEffect(() => {
+                if (zona) {
+                    setSucursal(''); // Reset sucursal al cambiar zona
+                }
+            }, [zona]);
 
             useEffect(() => {
                 localStorage.setItem('sucursal', sucursal);
@@ -2321,9 +2401,12 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
                                 </div>
                             )}
                             
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Proveedor</label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        <i className="fas fa-building mr-1"></i>
+                                        Proveedor
+                                    </label>
                                     <select 
                                         className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                                         value={proveedor}
@@ -2333,15 +2416,43 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
                                         {proveedores.map(p => <option key={p} value={p}>{p}</option>)}
                                     </select>
                                 </div>
+                                
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Sucursal</label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        <i className="fas fa-map-marked-alt mr-1"></i>
+                                        Zona
+                                    </label>
+                                    <select 
+                                        className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                                        value={zona}
+                                        onChange={(e) => setZona(e.target.value)}
+                                    >
+                                        <option value="">Seleccione zona</option>
+                                        {Object.keys(zonas).map(z => (
+                                            <option key={z} value={z}>
+                                                {z} ({zonas[z].length} suc.)
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        <i className="fas fa-store mr-1"></i>
+                                        Sucursal
+                                    </label>
                                     <select 
                                         className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                                         value={sucursal}
                                         onChange={(e) => setSucursal(e.target.value)}
+                                        disabled={!zona}
                                     >
-                                        <option value="">Seleccione sucursal</option>
-                                        {sucursales.map(s => <option key={s} value={s}>{s}</option>)}
+                                        <option value="">
+                                            {!zona ? 'Seleccione zona primero' : 'Seleccione sucursal'}
+                                        </option>
+                                        {zona && zonas[zona] && zonas[zona].map(s => (
+                                            <option key={s} value={s}>{s}</option>
+                                        ))}
                                     </select>
                                 </div>
                             </div>
@@ -2533,19 +2644,23 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
                         )}
                     </div>
 
-                    <footer className="mt-12 pt-8 border-t border-gray-200 text-center text-gray-600">
-                        <div className="space-y-2">
-                            <div>
-                                <i className="fas fa-code"></i> Desarrollado por <strong>Jonathan Cheves</strong>
-                            </div>
-                            <div>
-                                <i className="fas fa-building"></i> Zonas Neuquén Ciudad y Río Negro | <strong>SAIEP</strong>
-                            </div>
-                            <div className="text-sm text-gray-500">
-                                <i className="fas fa-copyright"></i> 2025 SAIEP - Todos los derechos reservados
-                            </div>
-                        </div>
-                    </footer>
+                    <footer className="mt-8 pt-6 border-t border-gray-200 text-center text-gray-500">
+    <div className="space-y-1 text-xs">
+        <div>
+            <i className="fas fa-code"></i> Desarrollado por <strong>Jonathan Cheves</strong> 
+            <span className="mx-2">|</span>
+            <a href="mailto:jcheves@laanonima.com.ar" className="text-blue-600 hover:text-blue-800">
+                <i className="fas fa-envelope"></i> jcheves@laanonima.com.ar
+            </a>
+        </div>
+        <div>
+            <i className="fas fa-building"></i> SAIEP - De Neuquén Ciudad para Región Centro
+        </div>
+        <div className="text-gray-400">
+            <i className="fas fa-copyright"></i> 2026 - Todos los derechos reservados
+        </div>
+    </div>
+</footer>
                 </div>
             );
         }
