@@ -1525,6 +1525,24 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
                 return Math.round(num * 100) / 100;
             };
 
+
+            const generarNombreArchivo = (extension) => {
+                let codigoSucursal = sucursal;
+                const matchNumero = String(sucursal).match(/\d{1,3}/);
+                if (matchNumero) {
+                    codigoSucursal = matchNumero[0];
+                }
+                
+                const ordenesUnicas = [...new Set(
+                    productosSeleccionados.map(p => p.nroOrden).filter(Boolean)
+                )].sort();
+                
+                let nombreBase = `${codigoSucursal}_${proveedor}`;
+                if (ordenesUnicas.length > 0) {
+                    nombreBase += '_' + ordenesUnicas.join('_');
+                }
+                return `${nombreBase}.${extension}`;
+            };
             const exportarXLSX = () => {
                 // Generar HTML que Excel puede interpretar con estilos
                 let html = `
@@ -1640,8 +1658,7 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
                 const url = window.URL.createObjectURL(blob);
                 const link = document.createElement('a');
                 link.href = url;
-                const nombreArchivo = `orden_${proveedor}_${sucursal}_${new Date().toISOString().split('T')[0]}.xls`;
-                link.download = nombreArchivo;
+                link.download = generarNombreArchivo('xls');
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
@@ -1764,8 +1781,7 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
                 const url = window.URL.createObjectURL(blob);
                 const link = document.createElement('a');
                 link.href = url;
-                const nombreArchivo = `orden_${proveedor}_${sucursal}_${new Date().toISOString().split('T')[0]}.ods`;
-                link.download = nombreArchivo;
+                link.download = generarNombreArchivo('ods');
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
@@ -1875,8 +1891,7 @@ MASTELLONE|3470222|BEBIDA LACT.BASE DE LECHE AVELLANAS|SENSE|24|200|CM3`;
                     doc.text(`Sistema SAIEP - Control de Ordenes | Pag. ${i} de ${pageCount}`, 148, 200, { align: 'center' });
                 }
                 
-                const nombreArchivo = `orden_${proveedor}_${sucursal}_${new Date().toISOString().split('T')[0]}.pdf`;
-                doc.save(nombreArchivo);
+                doc.save(generarNombreArchivo('pdf'));
                 
                 setMensajeGuardado('📄 PDF generado correctamente');
                 setTimeout(() => setMensajeGuardado(''), 3000);
